@@ -1,8 +1,7 @@
-# Kubernetes Graph IDE (RFC)
+# k8n
 
 > **Status:** Conceptual / MVP Phase  
-> **Authors:** [Your Name] & Antigravity  
-> **Date:** 2026-02-07
+> **Authors:** Pulkit Chauhan, Keshav Sharma, Denish Goyal, Md. Shaad
 
 This project is a massive undertaking to build a **Visual IDE for Kubernetes**. It moves beyond simple dashboards (like ArgoCD or Lens) by treating the cluster state as a manipulatable graph, similar to **ComfyUI** or **n8n**, but for infrastructure.
 
