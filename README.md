@@ -6,15 +6,15 @@
 
 [Screenshot: Main Canvas - Coming Soon]
 
-## 🎯 What is k8n?
+##  What is k8n?
 
 k8n (Kubernetes Node) is a visual IDE that transforms Kubernetes management into an intuitive, node-based workflow. Instead of writing YAML files, you drag resources onto a canvas, connect them visually, and deploy with a single click.
 
 Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph you can see, edit, and understand at a glance.
 
-## ✨ Features
+##  Features
 
-### 🎨 Visual Canvas
+###  Visual Canvas
 - **Drag & Drop Interface**: Add Deployments, Services, ConfigMaps, and more from a toolbox
 - **Smart Connections**: Visual edges show relationships between resources
 - **Auto-Layout**: Automatically arranges resources for optimal visibility
@@ -22,7 +22,7 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 
 [Screenshot: Canvas with nodes - Coming Soon]
 
-### 🔌 Cluster Integration
+###  Cluster Integration
 - **Multi-Context Support**: Connect to any kubectl context
 - **Live Import**: Load existing cluster resources onto the canvas
 - **One-Click Deploy**: Apply changes directly to your cluster
@@ -30,7 +30,7 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 
 [Screenshot: Cluster connection - Coming Soon]
 
-### ⚙️ Resource Management
+###  Resource Management
 - **Inline Editing**: Double-click node names to rename
 - **Property Panels**: Edit resource specs without touching YAML
 - **Type-Safe Connections**: Only compatible resources can connect (Service → Deployment)
@@ -38,14 +38,14 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 
 [Screenshot: Node editing - Coming Soon]
 
-### 📦 Helm Integration
+###  Helm Integration
 - **Chart Search**: Browse and search Helm charts
 - **Drag & Deploy**: Add Helm releases as visual nodes
 - **Values Editing**: Configure chart values in the UI
 
 [Screenshot: Helm dashboard - Coming Soon]
 
-### 💾 Workflow Management
+###  Workflow Management
 - **Save & Load**: Persist workflows to database
 - **Templates**: Start with example workflows (Nginx, Redis, etc.)
 - **Export/Import**: Share workflows as JSON
@@ -53,14 +53,14 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 
 [Screenshot: Workflow manager - Coming Soon]
 
-### ⌨️ Keyboard Shortcuts
+###  Keyboard Shortcuts
 - `Ctrl+S` - Save workflow
 - `Ctrl+R` - Refresh from cluster
 - `Ctrl+Z` - Undo
 - `Delete` - Remove selected node
 - `?` - Show keyboard shortcuts
 
-### 🎯 Smart Features
+###  Smart Features
 - **Typed Connections**: ComfyUI-style color-coded connection types
   - 🔵 Blue: Network connections (Service → Deployment)
   - 🟡 Yellow: Configuration (ConfigMap → Deployment)
@@ -71,7 +71,7 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 
 [Screenshot: Connection types - Coming Soon]
 
-## 🚀 Quick Start
+##  Quick Start
 
 > **New to k8n?** Check out the [Quick Start Guide](docs/QUICK_START.md) for a 5-minute tutorial!
 
@@ -159,7 +159,7 @@ For convenience, use the start script:
 
 [Screenshot: Getting started flow - Coming Soon]
 
-## 📖 Usage Guide
+##  Usage Guide
 
 ### Creating a Simple Web Application
 
@@ -201,7 +201,7 @@ kubectl get all -n default
 - **Workflow Manager**: Access saved workflows from the manager
 - **Export**: Download as JSON for sharing
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 k8n/
@@ -237,7 +237,7 @@ k8n/
 **Database**
 - PostgreSQL 15
 
-## 🔧 Configuration
+##  Configuration
 
 ### Environment Variables
 
@@ -261,7 +261,7 @@ k8n uses your local kubectl configuration:
 - Supports all kubectl contexts
 - Uses the same authentication as kubectl
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### "No Kubernetes contexts found"
 
@@ -298,32 +298,8 @@ kubectl get all -n default
 2. Check `NEXT_PUBLIC_API_URL` in `.env`
 3. Look for CORS errors in browser console
 
-## 🗺️ Roadmap
 
-### ✅ Completed
-- Visual canvas with drag & drop
-- Kubernetes cluster integration
-- Resource editing and deployment
-- Helm chart integration
-- Workflow save/load
-- Keyboard shortcuts
-- Type-safe connections
-- Real-time status indicators
-
-### 🚧 In Progress
-- WebSocket for live updates
-- Advanced YAML editor
-- Multi-cluster support
-
-### 📋 Planned
-- AI-powered resource generation
-- Cost analysis and optimization
-- Collaboration features
-- Plugin system
-- Mobile support
-- CI/CD integration
-
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -333,36 +309,30 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
+##  License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 👥 Authors
+##  Authors
 
 - Pulkit Chauhan
 - Keshav Sharma
 - Denish Goyal
 - Md. Shaad
 
-## 🙏 Acknowledgments
+##  Acknowledgments
 
 - Inspired by [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
 - Built with [React Flow](https://reactflow.dev/)
 - Powered by [Kubernetes](https://kubernetes.io/)
 
-## 📖 Documentation
+##  Documentation
 
 - [Features Guide](FEATURES.md) - Comprehensive feature documentation
 - [API Reference](docs/API.md) - REST API documentation
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute
 - [Graph Schema](docs/graph-schema.json) - JSON schema for workflows
 - [OpenAPI Spec](docs/openapi.yaml) - API specification
-
-## 📞 Support
-
-- 🐛 [Report a Bug](https://github.com/yourusername/k8n/issues)
-- 💡 [Request a Feature](https://github.com/yourusername/k8n/issues)
-- 📖 [Documentation](https://github.com/yourusername/k8n/wiki)
 
 ---
 
