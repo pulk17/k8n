@@ -1,428 +1,369 @@
-# k8n
+# k8n - Visual Kubernetes IDE
 
+> A ComfyUI-inspired visual interface for Kubernetes - design, deploy, and manage your cluster with drag-and-drop simplicity.
 
-> **Status:** Conceptual / MVP Phase  
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-> **Authors:** Pulkit Chauhan, Keshav Sharma, Denish Goyal, Md. Shaad
+[Screenshot: Main Canvas - Coming Soon]
 
-  
+## 🎯 What is k8n?
 
-This project is a massive undertaking to build a **Visual IDE for Kubernetes**. It moves beyond simple dashboards (like ArgoCD or Lens) by treating the cluster state as a manipulatable graph, similar to **ComfyUI** or **n8n**, but for infrastructure.
+k8n (Kubernetes Node) is a visual IDE that transforms Kubernetes management into an intuitive, node-based workflow. Instead of writing YAML files, you drag resources onto a canvas, connect them visually, and deploy with a single click.
 
-  
+Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph you can see, edit, and understand at a glance.
 
----
+## ✨ Features
 
-  
+### 🎨 Visual Canvas
+- **Drag & Drop Interface**: Add Deployments, Services, ConfigMaps, and more from a toolbox
+- **Smart Connections**: Visual edges show relationships between resources
+- **Auto-Layout**: Automatically arranges resources for optimal visibility
+- **Real-Time Status**: See resource health with color-coded indicators (Running, Pending, Failed)
 
-## 1. Core Architecture: "The Graph Controller"
+[Screenshot: Canvas with nodes - Coming Soon]
 
-  
+### 🔌 Cluster Integration
+- **Multi-Context Support**: Connect to any kubectl context
+- **Live Import**: Load existing cluster resources onto the canvas
+- **One-Click Deploy**: Apply changes directly to your cluster
+- **Namespace Filtering**: Focus on specific namespaces
 
-The central thesis of this project is that the **Graph IS the Logic**. We are building a **State Manager** that synchronizes a visual graph with the actual Kubernetes cluster state.
+[Screenshot: Cluster connection - Coming Soon]
 
-  
+### ⚙️ Resource Management
+- **Inline Editing**: Double-click node names to rename
+- **Property Panels**: Edit resource specs without touching YAML
+- **Type-Safe Connections**: Only compatible resources can connect (Service → Deployment)
+- **Connection Hints**: Hover over handles to see what they accept
 
-### High-Level Stack
+[Screenshot: Node editing - Coming Soon]
 
-  
+### 📦 Helm Integration
+- **Chart Search**: Browse and search Helm charts
+- **Drag & Deploy**: Add Helm releases as visual nodes
+- **Values Editing**: Configure chart values in the UI
 
-- **Frontend:** Next.js (React) + **React Flow** (Canvas) + **Zustand** (State).
+[Screenshot: Helm dashboard - Coming Soon]
 
-- **Backend:** **Go (Golang)**.
+### 💾 Workflow Management
+- **Save & Load**: Persist workflows to database
+- **Templates**: Start with example workflows (Nginx, Redis, etc.)
+- **Export/Import**: Share workflows as JSON
+- **Version History**: Undo/redo with Ctrl+Z
 
-    - *Why Go?* We need native Kubernetes tooling (`client-go`, `helm` SDK). Node.js wrappers are too brittle for this level of integration.
+[Screenshot: Workflow manager - Coming Soon]
 
-- **Database:** PostgreSQL (to persist user graphs and workflows).
+### ⌨️ Keyboard Shortcuts
+- `Ctrl+S` - Save workflow
+- `Ctrl+R` - Refresh from cluster
+- `Ctrl+Z` - Undo
+- `Delete` - Remove selected node
+- `?` - Show keyboard shortcuts
 
-- **Message Queue (Optional):** Redis (for executing complex multi-step workflows).
+### 🎯 Smart Features
+- **Typed Connections**: ComfyUI-style color-coded connection types
+  - 🔵 Blue: Network connections (Service → Deployment)
+  - 🟡 Yellow: Configuration (ConfigMap → Deployment)
+  - 🟢 Green: Routing (Ingress → Service)
+- **Connection Validation**: Prevents invalid resource relationships
+- **Status Indicators**: Real-time resource health monitoring
+- **Namespace Awareness**: Visual grouping by namespace
 
-  
+[Screenshot: Connection types - Coming Soon]
 
----
+## 🚀 Quick Start
 
-  
+> **New to k8n?** Check out the [Quick Start Guide](docs/QUICK_START.md) for a 5-minute tutorial!
 
-## 2. Frontend: The Visual Editor
+### Prerequisites
 
-  
+- **Node.js** 18+ and npm
+- **Go** 1.21+
+- **Docker** and Docker Compose
+- **kubectl** configured with at least one context
 
-The frontend is a **Next.js** application designed to handle complex state without UI lag.
+### Installation
 
-  
+#### Option 1: Automated Installation (Recommended)
 
-### A. The "Generic Node" Problem
-
-We cannot manually code a component for every K8s resource (Deployment, Service, Ingress, etc.).
-
-**Solution: The Schema-Driven Node**
-
-1.  **Dynamic Rendering:** A single `GenericCRDNode` component.
-
-2.  **Input:** Accepts a `schema` prop (JSON Schema) from the backend.
-
-3.  **Form Generation:** Uses `@rjsf/core` (React JSON Schema Form) to render inputs automatically.
-
-  
-
-### B. The "Simplified Interface" (Abstraction Layer)
-
-To avoid overwhelming users with raw YAML, nodes have two modes:
-
--   **Face:** High-level inputs (e.g., "Image", "Replicas", "Port").
-
--   **Belly:** Hidden "Advanced" tab with the full generated form.
-
--   **Mapper:** Javascript logic maps simplified inputs to the complex K8s spec.
-
-  
-
-### C. Wiring & Logic
-
-Connections represent **Dependencies** or **Data Flow**.
-
--   **Dependency Edge:** "Service B waits for DB A".
-
--   **Data Edge:** "Inject `ServiceNode.status.ClusterIP` into `DeploymentNode.env.DB_HOST`".
-
--   **Implementation:** A robust variable substitution system (e.g., `${NodeID.field}`).
-
-  
-
----
-
-  
-
-## 3. Backend: The Controller
-
-  
-
-The Go backend is the engine validating and applying changes.
-
-  
-
-### A. Discovery & CRDs
-
--   **Library:** `k8s.io/client-go/discovery`
-
--   **Mechanism:** On startup, we query the API Server for all `GroupVersionKinds` (GVKs) and cache their OpenAPIV3 schemas.
-
--   **Challenge:** Recursively parsing deeply nested schemas to send a flat, usable structure to the frontend.
-
-  
-
-### B. Helm Integration (The Beast)
-
--   **Library:** `helm.sh/helm/v3/pkg/action`
-
--   **Strategy:** Import Helm as a library (no CLI calls).
-
--   **Capabilities:** `Install`, `Upgrade`, `Rollback`, and `GetRelease` directly from Go memory.
-
--   **Chart Management:** Fetch `values.yaml` from Helm repos to generate UI node inputs.
-
-  
-
-### C. Real-time Status via WebSockets
-
--   **Mechanism:** **Shared Informer** in Go.
-
--   **Flow:** K8s Event -> Informer -> WebSocket Push -> React Flow Node Update (Green/Red border).
-
-  
-
----
-
-  
-
-## 4. Engineering Challenges ("The Gotchas")
-
-  
-
-### 1. The "Diff" Problem
-
-*Scenario:* UI says `replicas: 3`, Cluster says `replicas: 5` (changed via kubectl).
-
-*Solution:* **Live State Sync**. Always fetch the current state before applying. Show a "Diff View" (Git style) to resolve conflicts.
-
-  
-
-### 2. CORS & Proxying
-
-*Constraint:* Browsers cannot blindly talk to the K8s API.
-
-*Solution:* The Go Backend acts as a transparent **Proxy**. All frontend requests go to `/api/k8s/...` and are forwarded by the backend with proper auth.
-
-  
-
-### 3. Secrets Management
-
-*Security:* Never send raw Secret values to the frontend on "Get".
-
-*Solution:* detecting `kind: Secret` or sensitive fields in schema. Render as `*****`. Only transmit values on "Set" (Update/Create).
-
-  
-
-### 4. Namespace Isolation
-
-*Issue:* Linking a Service in `default` to a Pod in `dev` breaks DNS.
-
-*Solution:* Visual cues for Namespaces (Groups/Boxes) and validation rules preventing cross-namespace dependencies unless explicitly allowed.
-
-  
-
-### 5. Validation Hell
-
-*Issue:* Connecting `Service` output to `VolumeMount` input.
-
-*Solution:* **Socket Types**. Define inputs/outputs as strict types (`string`, `int`, `k8s-object`, `port`) and only allow compatible connections.
-
-  
-
----
-
-  
-
-## 5. Roadmap
-
-  
-
-## **Phase 1: The "Hello Cluster" Core (Weeks 2-4)**
-
-  
-
-_Goal: Authenticate with a cluster and render a read-only graph of existing resources._
-
-  
-
-### **1.1. Authentication & Connectivity**
-
-- [ ] **Backend:** Implement a Kubeconfig loader.
-
-    - _Dev Mode:_ Load from `~/.kube/config`.
-    - _Prod Mode:_ ServiceAccount token injection.
-
-- [ ] **Frontend:** Create a "Connect Cluster" screen (upload kubeconfig or input context name).
-
-### **1.2. The Discovery Engine (Backend)**
-
-  
-
-- [ ] Implement `DiscoveryClient` in Go to fetch all available API groups (AppsV1, BatchV1, etc.).
-
-- [ ] Build a "Resource Lister": Fetch all Pods, Services, and Deployments in the `default` namespace.
-
-  
-
-### **1.3. The Visualizer (Frontend)**
-
-  
-
-- [ ] Initialize **React Flow** canvas.
-
-- [ ] **Auto-Layout:** Create a function that takes the list of K8s resources and positions them on the canvas so they don't overlap (use `dagre` or `elkjs` libraries).
-
-- [ ] **Dependency Wiring:**
-
-    - Detect relationships: If a Service selects `app=frontend` and a Deployment has label `app=frontend`, draw a line between them.
-
-  
-  
-
----
-
-  
-
-## **Phase 2: The "Comfy" Editor & Logic (Weeks 5-8)**
-
-  
-
-_Goal: Create new resources using the visual interface._
-
-  
-
-### **2.1. The Generic Node System**
-
-  
-
-- [ ] **Schema Fetcher:** Backend endpoint to retrieve the `OpenAPIV3Schema` for any resource (e.g., `Deployment`).
-
-- [ ] **Dynamic Form:** Integrate `@rjsf/core` (React JSON Schema Form).
-
-  
-
-    - _Logic:_ When a user drags a "Deployment" node, fetch schema -> render form inside the node's side panel.
-
-  
-
-### **2.2. The "Simplified Interface" Layer**
-
-  
-
-- [ ] **Abstraction Maps:** Create a `templates/` directory in your backend.
-
-    - Define a "Simple Web Server" template that requires only `image` and `port`.
-
-- [ ] **Transformer:** Write the Go logic to inflate this simple input into full K8s YAML.
-
-    - _Input:_ `{ "image": "nginx", "port": 80 }`
-
-    - _Output:_ `Deployment (replicas: 1...)` + `Service (ClusterIP...)`.
-
-  
-
-### **2.3. State Management (The "Apply" Button)**
-
-  
-
-- [ ] **Graph-to-YAML Compiler:** Traverse the React Flow graph and generate a multi-doc YAML string.
-
-- [ ] **Dry Run:** Send YAML to backend -> Run `kubectl apply --dry-run=server` -> Return errors to UI.
-
-- [ ] **Real Apply:** Execute the apply via `dynamicClient` in Go.
-
-  
-
----
-
-  
-
-## **Phase 3: The CRD & Helm Deep Dive (Weeks 9-11)**
-
-  
-
-_Goal: Support the complex, custom parts of Kubernetes._
-
-  
-
-### **3.1. CRD First-Class Support**
-
-  
-
-- [ ] **Watcher:** Backend watches for `CustomResourceDefinitions` events. If a user installs "CertManager", the "Certificate" node type should instantly appear in the UI toolbox.
-
-- [ ] **Generic Controller:** Ensure your "Apply" logic works for resources your code has never seen before (using `unstructured.Unstructured`).
-
-  
-  
-
-### **3.2. Helm Integration**
-
-  
-
-- [ ] **Chart Repository Browser:** UI to search Artifact Hub or local repos.
-
-- [ ] **The "Helm Node":**
-
-    - This is a special node. It doesn't represent one resource; it represents a _Release_.
-
-    - Input: `values.yaml` (use Monaco Editor for this).
-
-- [ ] **Backend SDK:**
-
-    - Implement `action.Install` and `action.Upgrade`.
-
-    - _Critical:_ Handle the "Wait" flag so the UI shows a spinner until the chart is fully ready.
-
-  
-
----
-
-  
-
-## **Phase 4: Real-Time Operations & Polish (Weeks 12-14)**
-
-  
-
-_Goal: Make it feel alive and usable for debugging._
-
-  
-
-### **4.1. The Feedback Loop (WebSockets)**
-
-  
-
-- [ ] **Informer Factory:** Start Go Informers for visible resources.
-
-- [ ] **Status Pushing:**
-
-    - If a Pod turns to `CrashLoopBackOff`, push a message to the UI.
-
-    - Update the Node border color to Red.
-
-    - Show the simplified error message on hover.
-
-  
-
-### **4.2. Terminal & Logs**
-
-  
-
-- [ ] **Log Stream:** Click a Pod Node -> Open bottom panel -> Stream logs via WebSocket.
-
-- [ ] **Shell Access:** Integrate `xterm.js` on the frontend and `SPDY` executor on the backend for `kubectl exec` capabilities.
-
-  
-  
-
----
-
-  
-
-## **Phase 5: Advanced Features (The "Wow" Factor) (Week 15+)**
-
-  
-
-### **5.1. "Smart Connections"**
-
-  
-
-- [ ] Implement logic where dragging a wire from a **Service Node** to a **Deployment Node** automatically prompts: _"Do you want to inject this Service's DNS name as an Environment Variable?"_
-
-  
-
-### **5.2. AI Integration (Optional but recommended)**
-
-  
-
-- [ ] Add a "Magic Wand" button.
-
-- [ ] Prompt: "Make a high-availability Redis cluster."
-
-- [ ] Backend calls LLM -> Returns JSON Graph -> UI renders the nodes.
-
-  
-
----
-
-  
-
-## 6. Development Setup
-
-  
-
-### Backend
-
+**Linux/Mac:**
 ```bash
+git clone https://github.com/yourusername/k8n.git
+cd k8n
+./install.sh
+```
 
-cd backend
+**Windows:**
+```bash
+git clone https://github.com/yourusername/k8n.git
+cd k8n
+install.bat
+```
 
+The install script will:
+- Check all prerequisites
+- Create environment files
+- Start the database
+- Install dependencies
+
+#### Option 2: Manual Installation
+
+1. **Clone the repository**
+```bash
+git clone https://github.com/yourusername/k8n.git
+cd k8n
+```
+
+2. **Start the database**
+```bash
+docker-compose up -d
+```
+
+3. **Start the backend**
+```bash
+cd apps/api
 go run main.go
-
 ```
+Backend runs on `http://localhost:8080`
 
-*Port: 8080*
-
-  
-
-### Frontend
-
+4. **Start the frontend**
 ```bash
-
-cd frontend
-
+cd apps/web
+npm install
 npm run dev
+```
+Frontend runs on `http://localhost:3000`
 
+5. **Open your browser**
+```bash
+open http://localhost:3000
 ```
 
-*Port: 3000*
+#### Option 3: Quick Start Script (Linux/Mac)
+
+For convenience, use the start script:
+```bash
+./start.sh  # Starts everything in the background
+./stop.sh   # Stops all services
+```
+
+### First Steps
+
+1. **Connect to Cluster**: Select your kubectl context from the dropdown
+2. **Choose a Workflow**:
+   - **New Workflow**: Start with an empty canvas
+   - **Example Workflow**: Try the Nginx starter template
+   - **Import from Cluster**: Load your existing resources
+3. **Design**: Drag resources from the toolbox, connect them visually
+4. **Deploy**: Click "Apply" to deploy to your cluster
+
+[Screenshot: Getting started flow - Coming Soon]
+
+## 📖 Usage Guide
+
+### Creating a Simple Web Application
+
+1. **Add a Deployment**
+   - Drag "Deployment" from the toolbox
+   - Double-click the name to rename it to "web-app"
+   - Click to expand and set:
+     - Image: `nginx:latest`
+     - Replicas: `3`
+
+2. **Add a Service**
+   - Drag "Service" from the toolbox
+   - Rename to "web-service"
+   - Set Port: `80`
+
+3. **Connect Them**
+   - Drag from the Service's green output handle
+   - Connect to the Deployment's green input handle
+
+4. **Deploy**
+   - Click the "Apply" button
+   - Watch the status indicators turn green
+
+5. **Verify**
+```bash
+kubectl get all -n default
+```
+
+### Loading Existing Resources
+
+1. Open Workflow Manager (top-right button)
+2. Click "Import from Cluster"
+3. Your resources appear on the canvas
+4. Edit and re-apply as needed
+
+### Saving Your Work
+
+- **Auto-save**: Press `Ctrl+S` anytime
+- **Workflow Manager**: Access saved workflows from the manager
+- **Export**: Download as JSON for sharing
+
+## 🏗️ Architecture
+
+```
+k8n/
+├── apps/
+│   ├── api/                 # Go backend
+│   │   ├── main.go         # API server
+│   │   └── internal/
+│   │       ├── handlers/   # HTTP handlers
+│   │       └── k8s/        # Kubernetes client
+│   └── web/                # Next.js frontend
+│       ├── app/            # Pages (canvas, connect, deployed)
+│       ├── components/     # React components
+│       ├── lib/            # Utilities (compiler, layout)
+│       └── store/          # Zustand state management
+├── docker-compose.yml      # PostgreSQL setup
+└── init-db.sql            # Database schema
+```
+
+### Tech Stack
+
+**Frontend**
+- Next.js 14 (React)
+- React Flow (Canvas)
+- Zustand (State Management)
+- Tailwind CSS (Styling)
+
+**Backend**
+- Go 1.21+
+- Gin (HTTP Framework)
+- client-go (Kubernetes SDK)
+- Helm SDK
+
+**Database**
+- PostgreSQL 15
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Create `.env` in the root directory:
+
+```env
+# Database
+DATABASE_URL=postgres://k8n:k8npassword@localhost:5432/k8n_db?sslmode=disable
+
+# API
+API_PORT=8080
+
+# Frontend
+NEXT_PUBLIC_API_URL=http://localhost:8080
+```
+
+### Kubernetes Access
+
+k8n uses your local kubectl configuration:
+- Default: `~/.kube/config`
+- Supports all kubectl contexts
+- Uses the same authentication as kubectl
+
+## 🐛 Troubleshooting
+
+### "No Kubernetes contexts found"
+
+1. Verify kubectl is configured:
+```bash
+kubectl config get-contexts
+```
+
+2. Ensure backend is running:
+```bash
+curl http://localhost:8080/health
+```
+
+3. Check backend logs for errors
+
+### Resources not showing
+
+1. Click the refresh button (or press `Ctrl+R`)
+2. Check namespace filter (top toolbar)
+3. Verify you have resources in the cluster:
+```bash
+kubectl get all -n default
+```
+
+### Backend won't start
+
+1. Check Go version: `go version` (need 1.21+)
+2. Verify database is running: `docker ps`
+3. Check kubeconfig: `kubectl cluster-info`
+
+### Frontend can't connect
+
+1. Verify backend is on port 8080
+2. Check `NEXT_PUBLIC_API_URL` in `.env`
+3. Look for CORS errors in browser console
+
+## 🗺️ Roadmap
+
+### ✅ Completed
+- Visual canvas with drag & drop
+- Kubernetes cluster integration
+- Resource editing and deployment
+- Helm chart integration
+- Workflow save/load
+- Keyboard shortcuts
+- Type-safe connections
+- Real-time status indicators
+
+### 🚧 In Progress
+- WebSocket for live updates
+- Advanced YAML editor
+- Multi-cluster support
+
+### 📋 Planned
+- AI-powered resource generation
+- Cost analysis and optimization
+- Collaboration features
+- Plugin system
+- Mobile support
+- CI/CD integration
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 👥 Authors
+
+- Pulkit Chauhan
+- Keshav Sharma
+- Denish Goyal
+- Md. Shaad
+
+## 🙏 Acknowledgments
+
+- Inspired by [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
+- Built with [React Flow](https://reactflow.dev/)
+- Powered by [Kubernetes](https://kubernetes.io/)
+
+## 📖 Documentation
+
+- [Features Guide](FEATURES.md) - Comprehensive feature documentation
+- [API Reference](docs/API.md) - REST API documentation
+- [Contributing Guide](CONTRIBUTING.md) - How to contribute
+- [Graph Schema](docs/graph-schema.json) - JSON schema for workflows
+- [OpenAPI Spec](docs/openapi.yaml) - API specification
+
+## 📞 Support
+
+- 🐛 [Report a Bug](https://github.com/yourusername/k8n/issues)
+- 💡 [Request a Feature](https://github.com/yourusername/k8n/issues)
+- 📖 [Documentation](https://github.com/yourusername/k8n/wiki)
+
+---
+
+**Made with ❤️ for the Kubernetes community**

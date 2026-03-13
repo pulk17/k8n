@@ -1,0 +1,9 @@
+{
+  "name": "api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "air",
+    "build": "go build -o server.exe main.go"
+  }
+}

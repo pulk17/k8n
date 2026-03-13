@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "K8nGraph",
+  "description": "JSON schema for a visual Kubernetes graph representing infrastructure state",
+  "type": "object",
+  "required": ["id", "name", "namespace", "nodes", "edges"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for the graph"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name of the graph"
+    },
+    "namespace": {
+      "type": "string",
+      "description": "Default Kubernetes namespace for the graph"
+    },
+    "nodes": {
+      "type": "array",
+      "description": "List of Kubernetes resources in the graph",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "position", "data", "namespace"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the node (often mapped to React Flow node ID)"
+          },
+          "type": {
+            "type": "string",
+            "description": "The Kubernetes Kind (e.g., Target, Deployment, Service, Pod)"
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Kubernetes namespace for this specific node"
+          },
+          "position": {
+            "type": "object",
+            "required": ["x", "y"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            },
+            "description": "XY coordinates for visual layout on the canvas"
+          },
+          "data": {
+            "type": "object",
+            "description": "The actual Kubernetes spec fields for the resource",
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Connections between resources",
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "target", "edgeType"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the edge"
+          },
+          "source": {
+            "type": "string",
+            "description": "ID of the source node"
+          },
+          "target": {
+            "type": "string",
+            "description": "ID of the target node"
+          },
+          "edgeType": {
+            "type": "string",
+            "enum": ["dependency", "data"],
+            "description": "Type of relationship: dependency (logical grouping) or data (data flow/port connection)"
+          }
+        }
+      }
+    }
+  }
+}

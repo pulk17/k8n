@@ -37,3 +37,10 @@ backend/vendor/
 *.test
 *.out
 go.work
+apps/api/tmp/
+apps/api/server.exe
+
+# Turbo
+.turbo/
+apps/web/.turbo/
+apps/api/.turbo/
