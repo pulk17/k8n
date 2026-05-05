@@ -15,6 +15,8 @@ Add Kubernetes resources to your canvas by dragging them from the toolbox. Suppo
 - Jobs
 - CronJobs
 - Ingress
+- PersistentVolumeClaims
+- HorizontalPodAutoscaler (HPA) - **Now with correct autoscaling/v2 API!**
 - Helm Releases
 
 [Screenshot placeholder]
@@ -77,6 +79,14 @@ Connections are color-coded and type-safe:
 - **🟢 Green (Routing)**: Ingress → Service
   - External routing
   - Path-based routing
+
+- **🔷 Cyan (Scaling)**: HPA → Deployment/StatefulSet
+  - Auto-scaling configuration
+  - CPU/Memory based scaling
+
+- **🟣 Purple (Storage)**: PVC → Deployment/StatefulSet
+  - Persistent volume claims
+  - Storage mounting
 
 [Screenshot placeholder]
 
@@ -239,12 +249,23 @@ Automatically discovers Custom Resource Definitions:
 
 [Screenshot placeholder]
 
-## 📊 Visualization
+## 📊 Visualization & Monitoring
+
+### Pod Metrics Monitoring (NEW!)
+Click on any Pod to view real-time resource usage:
+- **CPU Usage**: Current CPU consumption in millicores
+- **Memory Usage**: Current memory usage in Mi/Gi
+- **Container Breakdown**: Per-container resource metrics
+- **Auto-Refresh**: Updates every 5 seconds (toggleable)
+- **Requirements**: Requires metrics-server installed in cluster
+
+[Screenshot placeholder]
 
 ### Multiple View Modes
 - **Canvas View**: Main visual editor
 - **Deployed View**: See what's running in your cluster
 - **Help View**: Documentation and guides
+- **Metrics Panel**: Real-time pod monitoring (click any pod)
 
 [Screenshot placeholder]
 
@@ -292,6 +313,39 @@ Know your environment:
 - Warns about production clusters
 
 [Screenshot placeholder]
+
+## ✅ Recently Added
+
+### HorizontalPodAutoscaler Support
+Full HPA support with correct API version:
+- Uses `autoscaling/v2` API (fixed from experimental/v1)
+- Automatic target detection from graph connections
+- CPU-based scaling configuration
+- Min/Max replica settings
+- Visual connection to target workloads
+
+### Pod Metrics Dashboard
+Real-time resource monitoring:
+- Click any Pod node to view metrics
+- CPU and memory usage tracking
+- Container-level breakdown
+- Auto-refresh capability
+- Graceful handling when metrics-server unavailable
+
+### Enhanced Resource Support
+All major Kubernetes resources now fully supported:
+- StatefulSet with persistent storage
+- DaemonSet for node-level services
+- Job and CronJob for batch workloads
+- Ingress with TLS support
+- PersistentVolumeClaim for storage
+- Proper API versions for all resources
+
+### Robust Error Handling
+- Descriptive error messages with hints
+- Validation before deployment
+- Clear feedback for missing dependencies
+- Helpful suggestions for common issues
 
 ## 🔜 Coming Soon
 

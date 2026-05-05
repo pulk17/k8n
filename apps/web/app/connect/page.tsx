@@ -68,11 +68,19 @@ export default function ConnectPage() {
                 <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-red-700 dark:text-red-300">
-                    Connection Failed
+                    {error.includes('Cannot connect to API server') ? 'API Server Unreachable' : 'Connection Failed'}
                   </div>
                   <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">
                     {error}
                   </div>
+                  {error.includes('Cannot connect to API server') && (
+                    <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                      <p className="font-medium">Start the API server first:</p>
+                      <code className="block bg-gray-900 text-green-400 px-2 py-1 rounded font-mono">
+                        cd apps/api && go run main.go
+                      </code>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -134,6 +142,9 @@ export default function ConnectPage() {
           <p className="text-xs text-gray-400">
             Powered by React Flow • Kubernetes • Go
           </p>
+          <a href="/canvas" className="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
+            ← Back to Canvas
+          </a>
         </div>
       </div>
     </div>

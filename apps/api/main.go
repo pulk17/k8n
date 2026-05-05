@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -18,18 +19,36 @@ import (
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
-		return origin == "http://localhost:3000" || origin == "http://localhost:3001"
+		return origin == "http://localhost:3000" || origin == "http://localhost:3001" ||
+			origin == "http://127.0.0.1:3000" || origin == "http://127.0.0.1:3001"
 	},
 }
 
-var k8sClient *k8s.Client
+var (
+	k8sClient   *k8s.Client
+	k8sClientMu sync.RWMutex
+)
+
+// getK8sClient safely reads the global k8sClient under RLock.
+func getK8sClient() *k8s.Client {
+	k8sClientMu.RLock()
+	defer k8sClientMu.RUnlock()
+	return k8sClient
+}
+
+// setK8sClient safely replaces the global k8sClient under Lock.
+func setK8sClient(c *k8s.Client) {
+	k8sClientMu.Lock()
+	defer k8sClientMu.Unlock()
+	k8sClient = c
+}
 
 func main() {
 	r := gin.Default()
 
 	// Configure CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -112,32 +131,56 @@ func main() {
 			return
 		}
 
-		// Store globally
-		k8sClient = newClient
-		version, _ := k8sClient.CheckConnection()
+		// Store globally (thread-safe)
+		setK8sClient(newClient)
+		version, _ := newClient.CheckConnection()
 		
 		c.JSON(http.StatusOK, gin.H{"status": "connected", "context": req.Context, "version": version})
 	})
 
 	r.GET("/api/cluster/resources", handlers.GetClusterResources(func() *k8s.Client {
-		return k8sClient
+		return getK8sClient()
 	}))
 
 	r.GET("/api/cluster/crds", handlers.GetCRDs(func() *k8s.Client {
-		return k8sClient
+		return getK8sClient()
 	}))
 
 	r.GET("/api/schema/:kind", handlers.GetSchema(func() *k8s.Client {
-		return k8sClient
+		return getK8sClient()
+	}))
+
+	// Metrics endpoints
+	r.GET("/api/metrics/pod/:name", handlers.GetPodMetrics(func() *k8s.Client {
+		return getK8sClient()
+	}))
+	r.GET("/api/metrics/namespace", handlers.GetNamespaceMetrics(func() *k8s.Client {
+		return getK8sClient()
+	}))
+	r.GET("/api/metrics/:namespace/:kind/:name", handlers.GetResourceMetrics(func() *k8s.Client {
+		return getK8sClient()
+	}))
+	r.GET("/api/metrics/check", handlers.CheckMetricsServer(func() *k8s.Client {
+		return getK8sClient()
 	}))
 
 	r.GET("/api/helm/search", handlers.SearchHelmCharts())
 	r.POST("/api/helm/install", handlers.InstallHelmChart())
+	
+	// Helm Release Management
+	r.GET("/api/helm/releases", handlers.ListHelmReleases())
+	r.GET("/api/helm/releases/:name", handlers.GetHelmRelease())
+	r.GET("/api/helm/releases/:name/values", handlers.GetHelmReleaseValues())
+	r.GET("/api/helm/releases/:name/status", handlers.GetHelmReleaseStatus())
+	r.GET("/api/helm/releases/:name/history", handlers.GetHelmReleaseHistory())
+	r.POST("/api/helm/releases/:name/upgrade", handlers.UpgradeHelmRelease())
+	r.POST("/api/helm/releases/:name/rollback", handlers.RollbackHelmRelease())
+	r.DELETE("/api/helm/releases/:name", handlers.UninstallHelmRelease())
 
 	r.POST("/api/mapper/:kind", handlers.MapToYAML())
 
 	applyHandler := handlers.ApplyResources(func() *k8s.Client {
-		return k8sClient
+		return getK8sClient()
 	})
 	r.POST("/api/graph/dry-run", applyHandler) // Use ?dryRun=true 
 	r.POST("/api/graph/apply", applyHandler)
@@ -146,21 +189,23 @@ func main() {
 	r.POST("/api/graph/save", handlers.SaveGraph())
 	r.GET("/api/graph/:id", handlers.LoadGraph())
 	r.GET("/api/graph/list", handlers.ListGraphs())
+	r.DELETE("/api/graph/:id", handlers.DeleteGraph())
 
 	// Basic K8s connection check
 	r.GET("/k8s/check", func(c *gin.Context) {
-		if k8sClient == nil {
+		client := getK8sClient()
+		if client == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "K8s client not initialized"})
 			return
 		}
 
-		version, err := k8sClient.CheckConnection()
+		version, err := client.CheckConnection()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to connect to K8s", "details": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"k8s_version": version, "context": k8sClient.Context})
+		c.JSON(http.StatusOK, gin.H{"k8s_version": version, "context": client.Context})
 	})
 
 	// Basic Helm check
@@ -178,7 +223,8 @@ func main() {
 
 	// Delete resource endpoint
 	r.DELETE("/api/resource/delete", func(c *gin.Context) {
-		if k8sClient == nil {
+		client := getK8sClient()
+		if client == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "K8s client not initialized"})
 			return
 		}
@@ -194,15 +240,23 @@ func main() {
 			return
 		}
 
+		// Check if force delete is requested
+		force := c.Query("force") == "true"
+
 		// Delete the resource
-		if err := handlers.DeleteResource(k8sClient, req.Kind, req.Name, req.Namespace); err != nil {
+		if err := handlers.DeleteResource(client, req.Kind, req.Name, req.Namespace, force); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete resource", "details": err.Error()})
 			return
 		}
 
-		fmt.Printf("Deleted %s/%s in namespace %s\n", req.Kind, req.Name, req.Namespace)
+		deleteType := "Deleted"
+		if force {
+			deleteType = "Force deleted"
+		}
+		fmt.Printf("%s %s/%s in namespace %s\n", deleteType, req.Kind, req.Name, req.Namespace)
 		c.JSON(http.StatusOK, gin.H{"message": "Resource deleted successfully"})
 	})
 
 	r.Run(":8080")
 }
+

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PackageSearch, Search, X, Download } from "lucide-react";
-import { fetchHelmCharts } from "../lib/api";
+import { fetchHelmCharts, API_URL } from "../lib/api";
 
 export default function HelmDashboard() {
   const [query, setQuery] = useState("");
@@ -18,9 +18,24 @@ export default function HelmDashboard() {
     try {
       const results = await fetchHelmCharts(query);
       setCharts(results || []);
-    } catch (err) {
-      console.error(err);
+      if (!results || results.length === 0) {
+        console.log('No charts found for query:', query);
+      }
+    } catch (err: any) {
+      console.error('Helm search error:', err);
       setCharts([]);
+      
+      // More detailed error message
+      const apiUrl = API_URL;
+      alert(
+        `❌ Failed to search Helm charts\n\n` +
+        `Error: ${err.message}\n\n` +
+        `Troubleshooting:\n` +
+        `1. Check backend is running: ${apiUrl}/health\n` +
+        `2. Verify internet connection (needs Artifact Hub access)\n` +
+        `3. Check browser console for detailed errors\n` +
+        `4. Try restarting the frontend dev server`
+      );
     } finally {
       setLoading(false);
     }
@@ -37,17 +52,18 @@ export default function HelmDashboard() {
     return (
       <button 
         onClick={() => setOpen(true)}
-        className="absolute bottom-4 left-4 z-10 bg-pink-600 hover:bg-pink-700 shadow-sm rounded p-3 px-5 flex items-center gap-2 transition-colors"
+        className="absolute bottom-14 left-4 z-10 bg-pink-600 hover:bg-pink-700 shadow-lg rounded p-2 px-4 flex items-center gap-2 transition-colors"
+        title="Search and add Helm charts from Artifact Hub"
       >
-        <PackageSearch className="w-5 h-5 text-white" />
-        <span className="text-sm font-semibold text-white">Helm Charts</span>
+        <PackageSearch className="w-4 h-4 text-white" />
+        <span className="text-xs font-semibold text-white">Helm Charts</span>
       </button>
     );
   }
 
   return (
-    <div className="absolute bottom-4 left-4 z-10 w-96 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 shadow-sm rounded overflow-hidden">
-      <div className="bg-gray-50 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700 px-4 py-3 flex items-center justify-between">
+    <div className="absolute bottom-14 left-4 z-20 w-96 max-h-[70vh] bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 shadow-lg rounded overflow-hidden flex flex-col">
+      <div className="flex-shrink-0 bg-gray-50 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <PackageSearch className="w-5 h-5 text-gray-700 dark:text-gray-300" />
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Artifact Hub</h2>
@@ -60,7 +76,7 @@ export default function HelmDashboard() {
         </button>
       </div>
 
-      <div className="p-3 border-b border-gray-200 dark:border-neutral-800">
+      <div className="flex-shrink-0 p-3 border-b border-gray-200 dark:border-neutral-800">
         <form onSubmit={handleSearch} className="flex gap-2">
           <input 
             type="text" 
@@ -78,12 +94,22 @@ export default function HelmDashboard() {
         </form>
       </div>
 
-      <div className="max-h-80 overflow-y-auto custom-scrollbar p-3 space-y-2">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
         {loading ? (
           <div className="text-center text-sm text-gray-500 py-8 italic">Searching Artifact Hub...</div>
         ) : charts.length === 0 ? (
           <div className="text-center text-sm text-gray-500 py-8">
-            {query ? "No charts found. Try a different search." : "Enter a search term to find Helm charts"}
+            {query ? (
+              <div>
+                <p className="mb-2">No charts found for "{query}"</p>
+                <p className="text-xs">Try searching for: nginx, redis, postgresql, mongodb</p>
+              </div>
+            ) : (
+              <div>
+                <p className="mb-2">Enter a search term to find Helm charts</p>
+                <p className="text-xs text-gray-400">Popular: nginx, redis, postgresql, mongodb, prometheus</p>
+              </div>
+            )}
           </div>
         ) : (
           charts.map((chart, idx) => (
@@ -114,9 +140,9 @@ export default function HelmDashboard() {
         )}
       </div>
       
-      <div className="bg-gray-50 dark:bg-neutral-900/50 px-4 py-2 border-t border-gray-200 dark:border-neutral-800 text-center">
-        <p className="text-[10px] text-gray-500 dark:text-gray-400">
-          Drag charts to canvas to configure
+      <div className="flex-shrink-0 bg-gray-50 dark:bg-neutral-900/50 px-4 py-2 border-t border-gray-200 dark:border-neutral-800">
+        <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center">
+          Drag charts to canvas to configure and deploy
         </p>
       </div>
     </div>

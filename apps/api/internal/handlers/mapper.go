@@ -44,9 +44,38 @@ func MapToYAML() gin.HandlerFunc {
 				replicas = int(r)
 			}
 			image, _ := input["image"].(string)
-			port := 80
-			if p, ok := input["port"].(float64); ok {
-				port = int(p)
+			if image == "" {
+				image = "nginx:latest" // Default image if not specified
+			}
+			
+			// Check both "containerPort" and "port" for backwards compatibility
+			containerPort := 80
+			if p, ok := input["containerPort"].(float64); ok {
+				containerPort = int(p)
+			} else if p, ok := input["port"].(float64); ok {
+				containerPort = int(p)
+			}
+
+			// Build container spec
+			containerSpec := map[string]interface{}{
+				"name":  name,
+				"image": image,
+				"ports": []map[string]interface{}{
+					{"containerPort": containerPort},
+				},
+			}
+
+			// Optional command/args override
+			if cmd, ok := input["command"].([]interface{}); ok && len(cmd) > 0 {
+				containerSpec["command"] = cmd
+			}
+			if args, ok := input["args"].([]interface{}); ok && len(args) > 0 {
+				containerSpec["args"] = args
+			}
+
+			// Optional env vars from configData or envVars
+			if envVars, ok := input["envVars"].([]interface{}); ok && len(envVars) > 0 {
+				containerSpec["env"] = envVars
 			}
 
 			fullObj["spec"] = map[string]interface{}{
@@ -64,15 +93,7 @@ func MapToYAML() gin.HandlerFunc {
 					},
 					"spec": map[string]interface{}{
 						"containers": []map[string]interface{}{
-							{
-								"name":  name,
-								"image": image,
-								"ports": []map[string]interface{}{
-									{
-										"containerPort": port,
-									},
-								},
-							},
+							containerSpec,
 						},
 					},
 				},
@@ -85,11 +106,11 @@ func MapToYAML() gin.HandlerFunc {
 			if p, ok := input["port"].(float64); ok {
 				port = int(p)
 			}
-			targetPort := 80
+			targetPort := port // Default targetPort to same as port
 			if p, ok := input["targetPort"].(float64); ok {
 				targetPort = int(p)
 			}
-			svcType, _ := input["type"].(string)
+			svcType, _ := input["serviceType"].(string)
 			if svcType == "" {
 				svcType = "ClusterIP"
 			}
@@ -125,21 +146,310 @@ func MapToYAML() gin.HandlerFunc {
 
 			fullObj["data"] = dataMap
 			
-		default:
-			// Handle Generic CRDs
-			// Normally requires looking up Group/Version from Discovery, but for now we fallback
-			// to assuming "experimental/v1" if user didn't specify.
-			fullObj["apiVersion"] = "experimental/v1" // Dummy generic API version
+		case "StatefulSet":
+			fullObj["apiVersion"] = "apps/v1"
 			
-			// Inject "spec" if provided as string (parsing it to map if needed, or dumping string)
-			if specStr, ok := input["spec"].(string); ok && specStr != "" {
-				var specMap map[string]interface{}
-				if err := yaml.Unmarshal([]byte(specStr), &specMap); err == nil {
-					fullObj["spec"] = specMap
-				} else {
-					fullObj["spec"] = map[string]interface{}{"raw": specStr}
+			replicas := 1
+			if r, ok := input["replicas"].(float64); ok {
+				replicas = int(r)
+			}
+			image, _ := input["image"].(string)
+			if image == "" {
+				image = "postgres:14-alpine"
+			}
+			
+			containerPort := 5432
+			if p, ok := input["containerPort"].(float64); ok {
+				containerPort = int(p)
+			}
+			
+			serviceName, _ := input["serviceName"].(string)
+			if serviceName == "" {
+				serviceName = name
+			}
+
+			// Build container spec
+			stsContainerSpec := map[string]interface{}{
+				"name":  name,
+				"image": image,
+				"ports": []map[string]interface{}{
+					{"containerPort": containerPort},
+				},
+			}
+
+			// Optional env vars
+			if envVars, ok := input["envVars"].([]interface{}); ok && len(envVars) > 0 {
+				stsContainerSpec["env"] = envVars
+			}
+
+			// Optional envFrom (reference a Secret or ConfigMap by name)
+			if secretRef, ok := input["envFromSecret"].(string); ok && secretRef != "" {
+				stsContainerSpec["envFrom"] = []map[string]interface{}{
+					{"secretRef": map[string]interface{}{"name": secretRef}},
 				}
 			}
+
+			fullObj["spec"] = map[string]interface{}{
+				"serviceName": serviceName,
+				"replicas":    replicas,
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": name,
+					},
+				},
+				"template": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"labels": map[string]interface{}{
+							"app": name,
+						},
+					},
+					"spec": map[string]interface{}{
+						"containers": []map[string]interface{}{
+							stsContainerSpec,
+						},
+					},
+				},
+			}
+
+		case "Secret":
+			fullObj["apiVersion"] = "v1"
+			
+			secretType, _ := input["secretType"].(string)
+			if secretType == "" {
+				secretType = "Opaque"
+			}
+			
+			fullObj["type"] = secretType
+			fullObj["data"] = map[string]string{}
+
+		case "Ingress":
+			fullObj["apiVersion"] = "networking.k8s.io/v1"
+			
+			host, _ := input["host"].(string)
+			path, _ := input["path"].(string)
+			if path == "" {
+				path = "/"
+			}
+			
+			serviceName := name
+			servicePort := 80
+			if p, ok := input["port"].(float64); ok {
+				servicePort = int(p)
+			}
+
+			rules := []map[string]interface{}{}
+			if host != "" {
+				rules = append(rules, map[string]interface{}{
+					"host": host,
+					"http": map[string]interface{}{
+						"paths": []map[string]interface{}{
+							{
+								"path":     path,
+								"pathType": "Prefix",
+								"backend": map[string]interface{}{
+									"service": map[string]interface{}{
+										"name": serviceName,
+										"port": map[string]interface{}{
+											"number": servicePort,
+										},
+									},
+								},
+							},
+						},
+					},
+				})
+			}
+
+			fullObj["spec"] = map[string]interface{}{
+				"rules": rules,
+			}
+
+		case "PersistentVolumeClaim":
+			fullObj["apiVersion"] = "v1"
+			
+			storageSize, _ := input["storageSize"].(string)
+			if storageSize == "" {
+				storageSize = "10Gi"
+			}
+			
+			accessMode, _ := input["accessMode"].(string)
+			if accessMode == "" {
+				accessMode = "ReadWriteOnce"
+			}
+			
+			storageClass, _ := input["storageClass"].(string)
+
+			spec := map[string]interface{}{
+				"accessModes": []string{accessMode},
+				"resources": map[string]interface{}{
+					"requests": map[string]interface{}{
+						"storage": storageSize,
+					},
+				},
+			}
+			
+			if storageClass != "" {
+				spec["storageClassName"] = storageClass
+			}
+
+			fullObj["spec"] = spec
+
+		case "HorizontalPodAutoscaler":
+			fullObj["apiVersion"] = "autoscaling/v2"
+			
+			minReplicas := 1
+			if r, ok := input["minReplicas"].(float64); ok {
+				minReplicas = int(r)
+			}
+			
+			maxReplicas := 10
+			if r, ok := input["maxReplicas"].(float64); ok {
+				maxReplicas = int(r)
+			}
+			
+			targetCPU := 80
+			if t, ok := input["targetCPU"].(float64); ok {
+				targetCPU = int(t)
+			}
+			
+			// Target reference - needs to be connected to a Deployment/StatefulSet
+			targetKind := "Deployment"
+			if tk, ok := input["targetKind"].(string); ok && tk != "" {
+				targetKind = tk
+			}
+			
+			targetName := name
+			if tn, ok := input["targetName"].(string); ok && tn != "" {
+				targetName = tn
+			}
+
+			fullObj["spec"] = map[string]interface{}{
+				"scaleTargetRef": map[string]interface{}{
+					"apiVersion": "apps/v1",
+					"kind":       targetKind,
+					"name":       targetName,
+				},
+				"minReplicas": minReplicas,
+				"maxReplicas": maxReplicas,
+				"metrics": []map[string]interface{}{
+					{
+						"type": "Resource",
+						"resource": map[string]interface{}{
+							"name": "cpu",
+							"target": map[string]interface{}{
+								"type":               "Utilization",
+								"averageUtilization": targetCPU,
+							},
+						},
+					},
+				},
+			}
+
+		case "DaemonSet":
+			fullObj["apiVersion"] = "apps/v1"
+			
+			image, _ := input["image"].(string)
+			if image == "" {
+				image = "fluent/fluentd:latest"
+			}
+			
+			containerPort := 24224
+			if p, ok := input["containerPort"].(float64); ok {
+				containerPort = int(p)
+			}
+
+			fullObj["spec"] = map[string]interface{}{
+				"selector": map[string]interface{}{
+					"matchLabels": map[string]interface{}{
+						"app": name,
+					},
+				},
+				"template": map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"labels": map[string]interface{}{
+							"app": name,
+						},
+					},
+					"spec": map[string]interface{}{
+						"containers": []map[string]interface{}{
+							{
+								"name":  name,
+								"image": image,
+								"ports": []map[string]interface{}{
+									{
+										"containerPort": containerPort,
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+		case "Job":
+			fullObj["apiVersion"] = "batch/v1"
+			
+			image, _ := input["image"].(string)
+			if image == "" {
+				image = "busybox:latest"
+			}
+
+			fullObj["spec"] = map[string]interface{}{
+				"template": map[string]interface{}{
+					"spec": map[string]interface{}{
+						"containers": []map[string]interface{}{
+							{
+								"name":    name,
+								"image":   image,
+								"command": []string{"sh", "-c", "echo Hello from Job"},
+							},
+						},
+						"restartPolicy": "Never",
+					},
+				},
+			}
+
+		case "CronJob":
+			fullObj["apiVersion"] = "batch/v1"
+			
+			image, _ := input["image"].(string)
+			if image == "" {
+				image = "busybox:latest"
+			}
+			
+			schedule, _ := input["schedule"].(string)
+			if schedule == "" {
+				schedule = "0 0 * * *" // Daily at midnight
+			}
+
+			fullObj["spec"] = map[string]interface{}{
+				"schedule": schedule,
+				"jobTemplate": map[string]interface{}{
+					"spec": map[string]interface{}{
+						"template": map[string]interface{}{
+							"spec": map[string]interface{}{
+								"containers": []map[string]interface{}{
+									{
+										"name":    name,
+										"image":   image,
+										"command": []string{"sh", "-c", "echo Hello from CronJob"},
+									},
+								},
+								"restartPolicy": "OnFailure",
+							},
+						},
+					},
+				},
+			}
+
+		default:
+			// Handle Generic CRDs
+			// For unknown types, try to use a sensible default or return error
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Unsupported resource kind: " + kind,
+				"hint":  "Supported kinds: Deployment, StatefulSet, Service, ConfigMap, Secret, Ingress, PersistentVolumeClaim, HorizontalPodAutoscaler, DaemonSet, Job, CronJob",
+			})
+			return
 		}
 
 		// Convert to YAML

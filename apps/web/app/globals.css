@@ -127,3 +127,24 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background-color: #6b7280;
 }
+
+/* Toast notification animations */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-in {
+  animation: slideInFromRight 0.3s ease-out;
+}
+
+/* Improved node selection glow */
+.react-flow__node.selected {
+  box-shadow: 0 0 0 2px #3b82f6, 0 0 20px rgba(59, 130, 246, 0.15);
+}

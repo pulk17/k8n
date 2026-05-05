@@ -200,6 +200,66 @@ export default function HelpPage() {
           </div>
         </section>
 
+        {/* Helm Charts */}
+        <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+            <Box className="w-5 h-5 inline mr-2" />
+            Helm Charts
+          </h2>
+          <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">What is Helm?</h3>
+              <p className="mb-2">
+                Helm is the package manager for Kubernetes. It allows you to define, install, and upgrade complex Kubernetes applications using pre-packaged charts.
+              </p>
+              <p>
+                Think of Helm charts like Docker images for Kubernetes - they bundle together all the resources needed to run an application (Deployments, Services, ConfigMaps, etc.) with configurable values.
+              </p>
+            </div>
+            
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Using Helm in k8n</h3>
+              <ol className="list-decimal list-inside space-y-2 ml-2">
+                <li>Click the "Helm Charts" button in the bottom-left corner</li>
+                <li>Search for charts from Artifact Hub (e.g., "nginx", "redis", "postgresql")</li>
+                <li>Drag a chart onto the canvas to add it as a node</li>
+                <li>Configure the chart's values in the node settings (optional)</li>
+                <li>Click "Apply" to install the chart to your cluster</li>
+              </ol>
+            </div>
+
+            <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-4">
+              <h3 className="font-semibold text-green-800 dark:text-green-400 mb-2">✅ Fully Functional</h3>
+              <p className="text-green-700 dark:text-green-300">
+                Helm installation is now <strong>fully implemented</strong>! Charts will be installed to your cluster with the configured values. Common repositories (bitnami, stable, ingress-nginx, jetstack) are automatically configured.
+              </p>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Pre-configured Repositories</h3>
+              <p className="mb-2">k8n automatically configures these popular Helm repositories:</p>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li><strong>bitnami:</strong> Bitnami Application Catalog (most popular charts)</li>
+                <li><strong>stable:</strong> Official Helm stable charts</li>
+                <li><strong>ingress-nginx:</strong> NGINX Ingress Controller</li>
+                <li><strong>jetstack:</strong> cert-manager and other Jetstack tools</li>
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Popular Helm Charts</h3>
+              <ul className="list-disc list-inside space-y-1 ml-2">
+                <li><strong>nginx:</strong> Web server and reverse proxy</li>
+                <li><strong>redis:</strong> In-memory data store and cache</li>
+                <li><strong>postgresql:</strong> Relational database</li>
+                <li><strong>mongodb:</strong> NoSQL document database</li>
+                <li><strong>prometheus:</strong> Monitoring and alerting</li>
+                <li><strong>grafana:</strong> Metrics visualization</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         {/* Keyboard Shortcuts */}
         <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">

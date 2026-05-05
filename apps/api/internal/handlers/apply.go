@@ -5,9 +5,11 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -62,7 +64,7 @@ func ApplyResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 
 		var req ApplyRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid body body, expected {yaml: string}"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body, expected {yaml: string}"})
 			return
 		}
 
@@ -78,6 +80,35 @@ func ApplyResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			return
 		}
 		mapper := restmapper.NewDiscoveryRESTMapper(gr)
+
+		// Collect unique namespaces from all objects
+		namespacesToCreate := make(map[string]bool)
+		for _, obj := range objects {
+			ns := obj.GetNamespace()
+			if ns != "" && ns != "default" && ns != "kube-system" && ns != "kube-public" && ns != "kube-node-lease" {
+				namespacesToCreate[ns] = true
+			}
+		}
+
+		// Create namespaces if they don't exist
+		for ns := range namespacesToCreate {
+			opts := metav1.CreateOptions{}
+			if isDryRun {
+				opts.DryRun = []string{metav1.DryRunAll}
+			}
+			
+			_, err := client.Clientset.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: ns,
+				},
+			}, opts)
+			
+			// Ignore error if namespace already exists
+			if err != nil && !strings.Contains(err.Error(), "already exists") {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create namespace: " + ns, "details": err.Error()})
+				return
+			}
+		}
 
 		var errorsList []ErrorItem
 		for _, obj := range objects {

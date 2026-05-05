@@ -6,6 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 var schemaCache = make(map[string]map[string]interface{})
@@ -20,7 +22,7 @@ func GetSchema(clientGetter func() *k8s.Client) gin.HandlerFunc {
 		}
 
 		// Normalize kind to Title case
-		kind = strings.Title(strings.ToLower(kind))
+		kind = cases.Title(language.Und).String(strings.ToLower(kind))
 
 		// Check cache
 		if cached, ok := schemaCache[kind]; ok {

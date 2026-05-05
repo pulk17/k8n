@@ -7,9 +7,10 @@ interface KeyboardShortcutsProps {
   onRefresh: () => void;
   onDelete: () => void;
   onUndo: () => void;
+  onRedo?: () => void;
 }
 
-export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo }: KeyboardShortcutsProps) {
+export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo, onRedo }: KeyboardShortcutsProps) {
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
@@ -32,8 +33,15 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo 
         return;
       }
 
-      // Ctrl+Z to undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      // Ctrl+Shift+Z or Ctrl+Y to redo
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        onRedo?.();
+        return;
+      }
+
+      // Ctrl+Z to undo (must check after redo since Ctrl+Shift+Z also has e.key === 'z')
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         onUndo();
       }
@@ -54,14 +62,17 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (!(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
           e.preventDefault();
-          onDelete();
+          // Small delay to ensure selection state is updated
+          setTimeout(() => {
+            onDelete();
+          }, 10);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onSave, onRefresh, onDelete, onUndo, showHelp]);
+  }, [onSave, onRefresh, onDelete, onUndo, onRedo, showHelp]);
 
   if (!showHelp) return null;
 
@@ -82,6 +93,11 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo 
           <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
             <span className="text-gray-700 dark:text-gray-300">Undo</span>
             <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+Z</kbd>
+          </div>
+
+          <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
+            <span className="text-gray-700 dark:text-gray-300">Redo</span>
+            <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+Shift+Z</kbd>
           </div>
 
           <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">

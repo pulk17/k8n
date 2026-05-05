@@ -3,6 +3,7 @@ import { Node, Edge, Connection, addEdge, applyNodeChanges, applyEdgeChanges, No
 import { fetchResources, API_URL } from "../lib/api";
 import { generateEdges } from "../lib/edges";
 import { layoutGraph } from "../lib/layout";
+import { RESOURCE_COLORS, DEFAULT_RESOURCE_COLOR } from "../lib/constants";
 
 export interface CanvasState {
   nodes: Node[];
@@ -31,23 +32,11 @@ export interface CanvasState {
   createStarterWorkflow: () => void;
   clearCanvas: () => void;
   undo: () => void;
+  redo: () => void;
   saveHistory: () => void;
 }
 
-const colorMap: Record<string, string> = {
-  Deployment: "#3b82f6",
-  Service: "#22c55e",
-  Pod: "#6b7280",
-  ConfigMap: "#eab308",
-  Secret: "#ef4444",
-  ReplicaSet: "#8b5cf6",
-  StatefulSet: "#06b6d4",
-  DaemonSet: "#f59e0b",
-  Job: "#10b981",
-  CronJob: "#14b8a6",
-  Ingress: "#ec4899",
-  HelmRelease: "#ec4899",
-};
+
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
   nodes: [],
@@ -85,6 +74,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }
   },
 
+  redo: () => {
+    const { history, historyIndex } = get();
+    if (historyIndex < history.length - 1) {
+      const nextState = history[historyIndex + 1];
+      set({
+        nodes: JSON.parse(JSON.stringify(nextState.nodes)),
+        edges: JSON.parse(JSON.stringify(nextState.edges)),
+        historyIndex: historyIndex + 1,
+      });
+    }
+  },
+
   clearCanvas: () => {
     set({
       nodes: [],
@@ -102,7 +103,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setSelectedNodeId: (id: string | null) => set({ selectedNodeId: id }),
 
   onNodesChange: (changes: NodeChange[]) => {
-    get().saveHistory();
+    // Only save history for structural changes, NOT position drags (which fire 60x/sec)
+    const hasStructuralChange = changes.some(c => c.type === 'remove' || c.type === 'add' || c.type === 'reset');
+    if (hasStructuralChange) {
+      get().saveHistory();
+    }
+
     set({ nodes: applyNodeChanges(changes, get().nodes) });
     
     // Handle selection changes
@@ -123,7 +129,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
   
   onEdgesChange: (changes: EdgeChange[]) => {
-    get().saveHistory();
+    const hasStructuralChange = changes.some(c => c.type === 'remove' || c.type === 'add' || c.type === 'reset');
+    if (hasStructuralChange) {
+      get().saveHistory();
+    }
     set({ edges: applyEdgeChanges(changes, get().edges) });
   },
   
@@ -194,7 +203,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         position: { x: 0, y: 0 },
         data: {
           ...r,
-          color: colorMap[r.kind] || "#9ca3af"
+          color: RESOURCE_COLORS[r.kind] || DEFAULT_RESOURCE_COLOR
         }
       }));
 
@@ -267,7 +276,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         name: 'nginx-deployment',
         namespace: 'default',
         status: 'Pending',
-        color: colorMap.Deployment,
+        color: RESOURCE_COLORS.Deployment,
         replicas: 3,
         image: 'nginx:latest',
       }
@@ -282,7 +291,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         name: 'nginx-service',
         namespace: 'default',
         status: 'Pending',
-        color: colorMap.Service,
+        color: RESOURCE_COLORS.Service,
         port: 80,
       }
     };
@@ -296,7 +305,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         name: 'nginx-config',
         namespace: 'default',
         status: 'Pending',
-        color: colorMap.ConfigMap,
+        color: RESOURCE_COLORS.ConfigMap,
       }
     };
 

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,6 +19,12 @@ func InitDB(dsn string) error {
 	if err != nil {
 		return err
 	}
+
+	// Configure connection pool to prevent exhaustion under load
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
 	return db.Ping()
 }
 
@@ -141,5 +148,29 @@ func ListGraphs() gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, graphs)
+	}
+}
+
+
+func DeleteGraph() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if db == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database not initialized"})
+			return
+		}
+
+		graphID := c.Param("id")
+		if graphID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Graph ID is required"})
+			return
+		}
+
+		_, err := db.Exec("DELETE FROM graphs WHERE id = $1", graphID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete graph", "details": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Graph deleted successfully"})
 	}
 }

@@ -4,6 +4,7 @@
 .idea/
 .vscode/
 *.swp
+.kiro
 
 # Node / Frontend
 node_modules/

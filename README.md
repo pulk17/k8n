@@ -6,6 +6,66 @@
 
 [Screenshot: Main Canvas - Coming Soon]
 
+## 🚀 Quick Start (One Command!)
+
+```bash
+# From the project root - starts everything
+npm run dev
+```
+
+This single command starts:
+- ✅ Go API with hot-reload (port 8080)
+- ✅ Next.js frontend (port 3000)
+- ✅ Auto-rebuilds on file changes
+
+Then open **http://localhost:3000** in your browser.
+
+### First Time Setup
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/yourusername/k8n.git
+cd k8n
+
+# 2. Install dependencies
+npm install
+
+# 3. Start database (optional - only needed for saving workflows)
+docker-compose up -d
+
+# 4. Start everything
+npm run dev
+```
+
+That's it! The app will open at `http://localhost:3000`.
+
+## 🚨 Prerequisites
+
+Before running, make sure you have:
+
+- **Node.js** 18+ and npm
+- **Go** 1.21+
+- **kubectl** configured with at least one context
+- **air** (Go hot-reload tool): `go install github.com/cosmtrek/air@latest`
+- **Docker** (optional - only for database/workflow persistence)
+- **metrics-server** (optional - for pod metrics monitoring)
+
+##  Getting Started in 3 Steps
+
+```bash
+# 1. Clone and install
+git clone https://github.com/yourusername/k8n.git
+cd k8n
+npm install
+
+# 2. Start everything (one command!)
+npm run dev
+
+# 3. Open http://localhost:3000
+```
+
+That's it! You're ready to visually design and deploy Kubernetes resources.
+
 ##  What is k8n?
 
 k8n (Kubernetes Node) is a visual IDE that transforms Kubernetes management into an intuitive, node-based workflow. Instead of writing YAML files, you drag resources onto a canvas, connect them visually, and deploy with a single click.
@@ -19,6 +79,7 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 - **Smart Connections**: Visual edges show relationships between resources
 - **Auto-Layout**: Automatically arranges resources for optimal visibility
 - **Real-Time Status**: See resource health with color-coded indicators (Running, Pending, Failed)
+- **Pod Metrics**: Click any Pod to view real-time CPU/Memory usage
 
 [Screenshot: Canvas with nodes - Coming Soon]
 
@@ -27,6 +88,7 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 - **Live Import**: Load existing cluster resources onto the canvas
 - **One-Click Deploy**: Apply changes directly to your cluster
 - **Namespace Filtering**: Focus on specific namespaces
+- **HPA Support**: Auto-scaling with correct autoscaling/v2 API
 
 [Screenshot: Cluster connection - Coming Soon]
 
@@ -65,11 +127,23 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
   - 🔵 Blue: Network connections (Service → Deployment)
   - 🟡 Yellow: Configuration (ConfigMap → Deployment)
   - 🟢 Green: Routing (Ingress → Service)
+  - 🔷 Cyan: Scaling (HPA → Deployment)
+  - 🟣 Purple: Storage (PVC → Deployment)
 - **Connection Validation**: Prevents invalid resource relationships
 - **Status Indicators**: Real-time resource health monitoring
 - **Namespace Awareness**: Visual grouping by namespace
+- **Pod Metrics**: Click pods to view CPU/Memory usage in real-time
 
 [Screenshot: Connection types - Coming Soon]
+
+##  What's New
+
+### Latest Updates
+- ✅ **Fixed HPA**: Now uses correct `autoscaling/v2` API version
+- ✅ **Pod Metrics**: Real-time CPU/Memory monitoring for all pods
+- ✅ **Enhanced Resources**: Full support for StatefulSet, DaemonSet, Job, CronJob, Ingress, PVC
+- ✅ **Better Errors**: Descriptive error messages with helpful hints
+- ✅ **Robust Validation**: Edge-based target detection for HPA
 
 ##  Quick Start
 
@@ -81,70 +155,48 @@ Think **ComfyUI for Kubernetes** - where your infrastructure is a visual graph y
 - **Go** 1.21+
 - **Docker** and Docker Compose
 - **kubectl** configured with at least one context
+- **metrics-server** (optional, for pod metrics monitoring)
 
 ### Installation
 
-#### Option 1: Automated Installation (Recommended)
+#### Quick Start (Recommended)
 
-**Linux/Mac:**
 ```bash
+# Clone and install
 git clone https://github.com/yourusername/k8n.git
 cd k8n
-./install.sh
-```
-
-**Windows:**
-```bash
-git clone https://github.com/yourusername/k8n.git
-cd k8n
-install.bat
-```
-
-The install script will:
-- Check all prerequisites
-- Create environment files
-- Start the database
-- Install dependencies
-
-#### Option 2: Manual Installation
-
-1. **Clone the repository**
-```bash
-git clone https://github.com/yourusername/k8n.git
-cd k8n
-```
-
-2. **Start the database**
-```bash
-docker-compose up -d
-```
-
-3. **Start the backend**
-```bash
-cd apps/api
-go run main.go
-```
-Backend runs on `http://localhost:8080`
-
-4. **Start the frontend**
-```bash
-cd apps/web
 npm install
+
+# Start database (optional - for workflow persistence)
+docker-compose up -d
+
+# Start everything
 npm run dev
 ```
-Frontend runs on `http://localhost:3000`
 
-5. **Open your browser**
+Open **http://localhost:3000** and you're ready to go!
+
+#### What `npm run dev` does
+
+- Starts the Go API with **hot-reload** via `air` (port 8080)
+- Starts the Next.js frontend with **hot-reload** (port 3000)
+- Auto-rebuilds both on file changes
+- No need to manually restart anything!
+
+#### Manual Start (Alternative)
+
+If you prefer to run services separately:
+
+**Terminal 1 - Backend:**
 ```bash
-open http://localhost:3000
+cd apps/api
+air  # or: go run main.go
 ```
 
-#### Option 3: Quick Start Script (Linux/Mac)
-
-For convenience, use the start script:
+**Terminal 2 - Frontend:**
 ```bash
-./start.sh  # Starts everything in the background
-./stop.sh   # Stops all services
+cd apps/web
+npm run dev
 ```
 
 ### First Steps
@@ -286,8 +338,47 @@ curl http://localhost:8080/health
 kubectl get all -n default
 ```
 
+### Pod metrics not available
+
+1. Install metrics-server:
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+2. Verify it's working:
+```bash
+kubectl top nodes
+kubectl top pods
+```
+
+3. For local clusters (minikube, kind), you may need to add `--kubelet-insecure-tls`:
+```bash
+kubectl patch deployment metrics-server -n kube-system --type='json' \
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+```
+
+### HPA shows "Unknown" status
+
+1. Ensure metrics-server is installed (see above)
+2. Check HPA status:
+```bash
+kubectl describe hpa <hpa-name>
+```
+3. Verify target deployment has resource requests defined
+
 ### Backend won't start
 
+**Error: "bind: Only one usage of each socket address"**
+- Port 8080 is already in use
+- Kill the existing process: `taskkill /F /IM main.exe` (Windows) or `pkill main` (Linux/Mac)
+- Or use `npm run dev` which handles this automatically
+
+**Error: "air: command not found"**
+- Install air: `go install github.com/cosmtrek/air@latest`
+- Make sure `$GOPATH/bin` is in your PATH
+- Or run manually: `cd apps/api && go run main.go`
+
+**Other issues:**
 1. Check Go version: `go version` (need 1.21+)
 2. Verify database is running: `docker ps`
 3. Check kubeconfig: `kubectl cluster-info`

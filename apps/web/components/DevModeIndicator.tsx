@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Code2, Database, Server, Wifi, WifiOff, ChevronDown, ChevronUp, X } from "lucide-react";
+import { API_URL } from "../lib/api";
 
 export default function DevModeIndicator() {
   const [apiStatus, setApiStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
@@ -10,10 +11,11 @@ export default function DevModeIndicator() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
 
+
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/health`);
+        const res = await fetch(`${API_URL}/health`);
         if (res.ok) {
           const data = await res.json();
           setApiStatus('connected');
@@ -47,7 +49,7 @@ export default function DevModeIndicator() {
     const hasIssues = apiStatus === 'disconnected' || dbStatus === 'disconnected' || k8sStatus === 'disconnected';
 
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed bottom-36 right-4 z-50">
         <button
           onClick={() => setIsExpanded(true)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg backdrop-blur-md transition-all ${
@@ -68,7 +70,7 @@ export default function DevModeIndicator() {
 
   // Expanded view
   return (
-    <div className="fixed bottom-4 right-4 z-50 bg-black/90 backdrop-blur-md text-white rounded-xl shadow-2xl border border-gray-700 overflow-hidden">
+    <div className="fixed bottom-36 right-4 z-50 bg-black/90 backdrop-blur-md text-white rounded-xl shadow-2xl border border-gray-700 overflow-hidden">
       <div className="bg-purple-600 px-3 py-1.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Code2 className="w-4 h-4" />
@@ -112,9 +114,18 @@ export default function DevModeIndicator() {
 
       <div className="px-3 py-2 bg-black/50 border-t border-gray-700">
         <div className="text-[10px] text-gray-400 space-y-0.5">
-          <div>API: {process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}</div>
+          <div>API: {API_URL}</div>
           <div>Node: {process.env.NODE_ENV}</div>
         </div>
+        {(apiStatus === 'disconnected' || k8sStatus === 'disconnected') && (
+          <a
+            href="/connect"
+            className="mt-2 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-semibold rounded transition-colors"
+          >
+            <Wifi className="w-3 h-3" />
+            Connect to Cluster
+          </a>
+        )}
       </div>
     </div>
   );
