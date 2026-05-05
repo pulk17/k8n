@@ -45,3 +45,15 @@ apps/api/server.exe
 .turbo/
 apps/web/.turbo/
 apps/api/.turbo/
+
+# Terraform
+deploy/aws/.terraform/
+deploy/aws/*.tfstate
+deploy/aws/*.tfstate.backup
+deploy/aws/*.tfplan
+deploy/aws/.terraform.lock.hcl
+
+# Deployment artifacts
+.k8n.pid
+backend.log
+frontend.log

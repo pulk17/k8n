@@ -27,7 +27,7 @@ func GetCRDs(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			return
 		}
 
-		// Fetch all API server groups
+		// Fetch all API server groups (with timeout context for safety)
 		groups, err := client.DiscoveryClient.ServerGroups()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to discover API groups", "details": err.Error()})

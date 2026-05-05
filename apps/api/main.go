@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,11 +17,26 @@ import (
 	"helm.sh/helm/v3/pkg/cli"
 )
 
+// getAllowedOrigins returns the list of allowed CORS origins from env or defaults.
+func getAllowedOrigins() []string {
+	if env := os.Getenv("ALLOWED_ORIGINS"); env != "" {
+		return strings.Split(env, ",")
+	}
+	return []string{
+		"http://localhost:3000", "http://localhost:3001",
+		"http://127.0.0.1:3000", "http://127.0.0.1:3001",
+	}
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
-		return origin == "http://localhost:3000" || origin == "http://localhost:3001" ||
-			origin == "http://127.0.0.1:3000" || origin == "http://127.0.0.1:3001"
+		for _, allowed := range getAllowedOrigins() {
+			if strings.TrimSpace(allowed) == origin {
+				return true
+			}
+		}
+		return false
 	},
 }
 
@@ -48,7 +64,7 @@ func main() {
 
 	// Configure CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "http://127.0.0.1:3001"},
+		AllowOrigins:     getAllowedOrigins(),
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -257,6 +273,10 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "Resource deleted successfully"})
 	})
 
-	r.Run(":8080")
+	port := os.Getenv("API_PORT")
+	if port == "" {
+		port = "8080"
+	}
+	r.Run(":" + port)
 }
 

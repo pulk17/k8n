@@ -1,0 +1,8 @@
+tmp
+*.exe
+*.exe~
+.turbo
+.git
+*.md
+.env*
+.air.toml

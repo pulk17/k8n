@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
@@ -22,28 +24,28 @@ type Resource struct {
 	Selector        map[string]string `json:"selector,omitempty"`
 	OwnerReferences []string          `json:"ownerReferences,omitempty"`
 	CreatedAt       string            `json:"createdAt,omitempty"`
-	
+
 	// Deployment/StatefulSet specific
-	Replicas      *int32  `json:"replicas,omitempty"`
-	ReadyReplicas int32   `json:"readyReplicas,omitempty"`
-	Image         string  `json:"image,omitempty"`
-	
+	Replicas      *int32 `json:"replicas,omitempty"`
+	ReadyReplicas int32  `json:"readyReplicas,omitempty"`
+	Image         string `json:"image,omitempty"`
+
 	// Service specific
-	ServiceType   string   `json:"serviceType,omitempty"`
-	ClusterIP     string   `json:"clusterIP,omitempty"`
-	ExternalIP    string   `json:"externalIP,omitempty"`
-	Ports         []string `json:"ports,omitempty"`
-	
+	ServiceType string   `json:"serviceType,omitempty"`
+	ClusterIP   string   `json:"clusterIP,omitempty"`
+	ExternalIP  string   `json:"externalIP,omitempty"`
+	Ports       []string `json:"ports,omitempty"`
+
 	// Pod specific
-	PodIP         string `json:"podIP,omitempty"`
-	NodeName      string `json:"nodeName,omitempty"`
-	RestartCount  int32  `json:"restartCount,omitempty"`
-	
+	PodIP        string `json:"podIP,omitempty"`
+	NodeName     string `json:"nodeName,omitempty"`
+	RestartCount int32  `json:"restartCount,omitempty"`
+
 	// ConfigMap/Secret specific
-	DataKeys      []string `json:"dataKeys,omitempty"`
+	DataKeys []string `json:"dataKeys,omitempty"`
 }
 
-// GetClusterResources fetches Pods, Deployments, Services, ConfigMaps
+// GetClusterResources fetches all resource types concurrently with a timeout.
 func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client := clientGetter()
@@ -52,35 +54,52 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			return
 		}
 
-		var resources []Resource
-		ctx := context.Background()
+		// 15-second timeout prevents the handler from hanging indefinitely
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
 
 		// Support server-side namespace filtering to reduce bandwidth on large clusters
 		namespace := c.Query("namespace")
 		// Empty string means all namespaces (matches K8s client behavior)
 
-		// Fetch Pods
-		pods, err := client.Clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		var (
+			mu        sync.Mutex
+			resources []Resource
+			wg        sync.WaitGroup
+		)
+
+		// appendResources is a thread-safe helper to add resources
+		appendResources := func(items []Resource) {
+			mu.Lock()
+			resources = append(resources, items...)
+			mu.Unlock()
+		}
+
+		// --- Fetch Pods ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pods, err := client.Clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list Pods: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, p := range pods.Items {
-				// Determine pod status more accurately
 				status := "Unknown"
 				statusMessage := ""
 				phase := string(p.Status.Phase)
-				
-				// Calculate total restart count
+
 				var restartCount int32
 				for _, cs := range p.Status.ContainerStatuses {
 					restartCount += cs.RestartCount
 				}
-				
-				// Get first container image
+
 				image := ""
 				if len(p.Spec.Containers) > 0 {
 					image = p.Spec.Containers[0].Image
 				}
-				
-				// Check container statuses for more detail
+
 				if phase == "Running" {
 					allReady := true
 					completedCount := 0
@@ -119,7 +138,6 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 						}
 					}
 				} else if phase == "Pending" {
-					// Check if it's actually starting or stuck
 					hasContainerCreating := false
 					for _, cs := range p.Status.ContainerStatuses {
 						if cs.State.Waiting != nil {
@@ -138,7 +156,6 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 							status = "Pending"
 						} else {
 							status = "Pending"
-							// Check pod conditions for more info
 							for _, cond := range p.Status.Conditions {
 								if cond.Status == "False" {
 									statusMessage = cond.Reason + ": " + cond.Message
@@ -148,7 +165,6 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 						}
 					}
 				} else if phase == "Succeeded" {
-					// Completed pods (from Jobs/CronJobs)
 					status = "Completed"
 					statusMessage = "Pod completed successfully"
 				} else if phase == "Failed" {
@@ -165,13 +181,13 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 				} else {
 					status = phase
 				}
-				
+
 				var owners []string
 				for _, o := range p.OwnerReferences {
 					owners = append(owners, o.Name)
 				}
-				
-				resources = append(resources, Resource{
+
+				items = append(items, Resource{
 					Kind:            "Pod",
 					Name:            p.Name,
 					Namespace:       p.Namespace,
@@ -188,11 +204,19 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					Image:           image,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch Deployments
-		deps, err := client.Clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch Deployments ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			deps, err := client.Clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list Deployments: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, d := range deps.Items {
 				status := "Unknown"
 				if d.Spec.Replicas != nil {
@@ -206,19 +230,18 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 						status = "Pending"
 					}
 				}
-				
+
 				var selector map[string]string
 				if d.Spec.Selector != nil {
 					selector = d.Spec.Selector.MatchLabels
 				}
-				
-				// Get first container image
+
 				image := ""
 				if len(d.Spec.Template.Spec.Containers) > 0 {
 					image = d.Spec.Template.Spec.Containers[0].Image
 				}
 
-				resources = append(resources, Resource{
+				items = append(items, Resource{
 					Kind:          "Deployment",
 					Name:          d.Name,
 					Namespace:     d.Namespace,
@@ -233,17 +256,25 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					Image:         image,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch ReplicaSets (since Deployments own RS, and RS own Pods, we might need them or just map loosely frontend side)
-		rss, err := client.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch ReplicaSets ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rss, err := client.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list ReplicaSets: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, rs := range rss.Items {
 				var owners []string
 				for _, o := range rs.OwnerReferences {
 					owners = append(owners, o.Name)
 				}
-				resources = append(resources, Resource{
+				items = append(items, Resource{
 					Kind:            "ReplicaSet",
 					Name:            rs.Name,
 					Namespace:       rs.Namespace,
@@ -253,17 +284,25 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					OwnerReferences: owners,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch Services
-		svcs, err := client.Clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch Services ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			svcs, err := client.Clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list Services: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, s := range svcs.Items {
 				var ports []string
 				for _, p := range s.Spec.Ports {
 					ports = append(ports, fmt.Sprintf("%d:%d/%s", p.Port, p.TargetPort.IntVal, p.Protocol))
 				}
-				
+
 				externalIP := ""
 				if len(s.Status.LoadBalancer.Ingress) > 0 {
 					if s.Status.LoadBalancer.Ingress[0].IP != "" {
@@ -272,8 +311,8 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 						externalIP = s.Status.LoadBalancer.Ingress[0].Hostname
 					}
 				}
-				
-				resources = append(resources, Resource{
+
+				items = append(items, Resource{
 					Kind:        "Service",
 					Name:        s.Name,
 					Namespace:   s.Namespace,
@@ -289,18 +328,26 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					Ports:       ports,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch ConfigMaps
-		cms, err := client.Clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch ConfigMaps ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cms, err := client.Clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list ConfigMaps: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, cm := range cms.Items {
 				var dataKeys []string
 				for k := range cm.Data {
 					dataKeys = append(dataKeys, k)
 				}
-				
-				resources = append(resources, Resource{
+
+				items = append(items, Resource{
 					Kind:        "ConfigMap",
 					Name:        cm.Name,
 					Namespace:   cm.Namespace,
@@ -312,11 +359,19 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					DataKeys:    dataKeys,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch DaemonSets
-		dss, err := client.Clientset.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch DaemonSets ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dss, err := client.Clientset.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list DaemonSets: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, ds := range dss.Items {
 				status := "Unknown"
 				if ds.Status.DesiredNumberScheduled > 0 {
@@ -328,19 +383,18 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 						status = "Pending"
 					}
 				}
-				
+
 				var selector map[string]string
 				if ds.Spec.Selector != nil {
 					selector = ds.Spec.Selector.MatchLabels
 				}
-				
-				// Get first container image
+
 				image := ""
 				if len(ds.Spec.Template.Spec.Containers) > 0 {
 					image = ds.Spec.Template.Spec.Containers[0].Image
 				}
 
-				resources = append(resources, Resource{
+				items = append(items, Resource{
 					Kind:          "DaemonSet",
 					Name:          ds.Name,
 					Namespace:     ds.Namespace,
@@ -355,11 +409,19 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					Image:         image,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch StatefulSets
-		stss, err := client.Clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch StatefulSets ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			stss, err := client.Clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list StatefulSets: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, sts := range stss.Items {
 				status := "Unknown"
 				if sts.Spec.Replicas != nil {
@@ -371,19 +433,18 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 						status = "Pending"
 					}
 				}
-				
+
 				var selector map[string]string
 				if sts.Spec.Selector != nil {
 					selector = sts.Spec.Selector.MatchLabels
 				}
-				
-				// Get first container image
+
 				image := ""
 				if len(sts.Spec.Template.Spec.Containers) > 0 {
 					image = sts.Spec.Template.Spec.Containers[0].Image
 				}
 
-				resources = append(resources, Resource{
+				items = append(items, Resource{
 					Kind:          "StatefulSet",
 					Name:          sts.Name,
 					Namespace:     sts.Namespace,
@@ -398,18 +459,26 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					Image:         image,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch Secrets
-		secrets, err := client.Clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch Secrets ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			secrets, err := client.Clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list Secrets: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, secret := range secrets.Items {
 				var dataKeys []string
 				for k := range secret.Data {
 					dataKeys = append(dataKeys, k)
 				}
-				
-				resources = append(resources, Resource{
+
+				items = append(items, Resource{
 					Kind:        "Secret",
 					Name:        secret.Name,
 					Namespace:   secret.Namespace,
@@ -421,13 +490,21 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					DataKeys:    dataKeys,
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch Ingresses
-		ingresses, err := client.Clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch Ingresses ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ingresses, err := client.Clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list Ingresses: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, ing := range ingresses.Items {
-				resources = append(resources, Resource{
+				items = append(items, Resource{
 					Kind:        "Ingress",
 					Name:        ing.Name,
 					Namespace:   ing.Namespace,
@@ -438,11 +515,19 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					CreatedAt:   ing.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch Jobs
-		jobs, err := client.Clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch Jobs ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			jobs, err := client.Clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list Jobs: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, job := range jobs.Items {
 				status := "Active"
 				if job.Status.Succeeded > 0 {
@@ -450,8 +535,8 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 				} else if job.Status.Failed > 0 {
 					status = "Failed"
 				}
-				
-				resources = append(resources, Resource{
+
+				items = append(items, Resource{
 					Kind:        "Job",
 					Name:        job.Name,
 					Namespace:   job.Namespace,
@@ -462,13 +547,21 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					CreatedAt:   job.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// Fetch CronJobs
-		cronJobs, err := client.Clientset.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
-		if err == nil {
+		// --- Fetch CronJobs ---
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cronJobs, err := client.Clientset.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				fmt.Printf("[resources] failed to list CronJobs: %v\n", err)
+				return
+			}
+			var items []Resource
 			for _, cj := range cronJobs.Items {
-				resources = append(resources, Resource{
+				items = append(items, Resource{
 					Kind:        "CronJob",
 					Name:        cj.Name,
 					Namespace:   cj.Namespace,
@@ -479,11 +572,11 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 					CreatedAt:   cj.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				})
 			}
-		}
+			appendResources(items)
+		}()
 
-		// (MVP) Optional: we could pull CRDs here dynamically, but it significantly slows down graph load.
-		// Instead, we let the client query specific CRDs or we just render the basic objects for now.
-		// For true Phase 3, we wait for a specific CRD query endpoint or load all if fast enough.
+		// Wait for all goroutines to complete (or timeout via ctx)
+		wg.Wait()
 
 		c.JSON(http.StatusOK, resources)
 	}

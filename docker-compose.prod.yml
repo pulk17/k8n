@@ -1,0 +1,86 @@
+# ============================================
+# k8n Production Docker Compose
+# ============================================
+#
+# Deploys the full k8n stack with Nginx reverse proxy.
+# All traffic goes through port 80 (single entry point).
+#
+# Quick start:
+#   docker-compose -f docker-compose.prod.yml up --build -d
+#   Open http://localhost in your browser
+#
+# With custom settings:
+#   POSTGRES_PASSWORD=secure123 KUBECONFIG_PATH=~/.kube \
+#     docker-compose -f docker-compose.prod.yml up --build -d
+
+services:
+  # --- Nginx Reverse Proxy ---
+  # Single entry point: routes /api/* -> API, /* -> Web
+  nginx:
+    image: nginx:alpine
+    container_name: k8n_nginx
+    restart: unless-stopped
+    ports:
+      - "${K8N_PORT:-80}:80"
+    volumes:
+      - ./deploy/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+
+  # --- PostgreSQL Database ---
+  # Stores saved workflows/graphs
+  db:
+    image: postgres:15-alpine
+    container_name: k8n_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: k8n
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-k8npassword}
+      POSTGRES_DB: k8n_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - k8n_pgdata:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U k8n -d k8n_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Go API Backend ---
+  # Handles K8s operations, Helm, graph persistence
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: k8n_api
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://k8n:${POSTGRES_PASSWORD:-k8npassword}@db:5432/k8n_db?sslmode=disable
+      - GIN_MODE=release
+      - ALLOWED_ORIGINS=http://localhost,http://localhost:${K8N_PORT:-80},${ALLOWED_ORIGINS:-}
+    volumes:
+      # Mount host kubeconfig so the API can talk to K8s clusters
+      - ${KUBECONFIG_PATH:-~/.kube}:/home/k8n/.kube:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # --- Next.js Frontend ---
+  # Visual canvas UI
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        # In production behind Nginx, the API is on the same origin
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+    container_name: k8n_web
+    restart: unless-stopped
+    depends_on:
+      - api
+
+volumes:
+  k8n_pgdata:

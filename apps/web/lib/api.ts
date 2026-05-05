@@ -1,4 +1,4 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export interface K8sResource {
   kind: string;
@@ -21,14 +21,23 @@ function isNetworkError(error: any): boolean {
 }
 
 export async function fetchResources(): Promise<K8sResource[]> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
   try {
-    const res = await fetch(`${API_URL}/api/cluster/resources`);
+    const res = await fetch(`${API_URL}/api/cluster/resources`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
       throw new Error(`Failed to fetch resources: ${res.status} ${res.statusText}. ${errorText}`);
     }
     return res.json();
   } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out. Your cluster may be slow to respond. Try selecting a specific namespace to reduce load.');
+    }
     if (isNetworkError(error)) {
       throw new Error(`Cannot connect to API server at ${API_URL}. Please ensure the backend is running.`);
     }
