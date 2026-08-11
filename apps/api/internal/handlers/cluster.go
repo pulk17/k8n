@@ -479,6 +479,10 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 			for k := range cm.Data {
 				dataKeys = append(dataKeys, k)
 			}
+			// Map iteration is randomised, so without this the keys come back in
+			// a different order every call and the watch stream reports the
+			// ConfigMap as changed on every single poll.
+			sort.Strings(dataKeys)
 
 			items = append(items, Resource{
 				Kind:        "ConfigMap",
@@ -625,6 +629,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 			for k := range secret.Data {
 				dataKeys = append(dataKeys, k)
 			}
+			sort.Strings(dataKeys)
 
 			items = append(items, Resource{
 				Kind:        "Secret",

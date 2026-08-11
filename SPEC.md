@@ -450,12 +450,12 @@ Beyond the list above:
 
 ### Not done
 
-- **Live-cluster verification.** There is no container runtime on this machine,
-  so the write paths — apply, delete, logs, diagnose, metrics — are verified by
-  construction and against the API's own types, not against a running cluster.
-  The read path behind `/api/cluster/watch` has been driven end to end against
-  a stub API server, which is not the same as a real one. Bring up kind or
-  minikube to exercise the rest.
+- **A second cluster.** Everything below was exercised against one
+  Docker Desktop cluster (kind-backed, v1.36.1, 6 nodes). Cloud clusters differ
+  in the ways that bite: RBAC that refuses half these calls, admission
+  webhooks, LoadBalancer services that actually provision, and CRDs.
+- **The assistant.** `GEMINI_API_KEY` is unset, so the agent team and the
+  patch-verification gate are still only verified by construction.
 
 ### How it was verified
 
@@ -471,6 +471,21 @@ Beyond the list above:
 - MCP over stdio: 9 tools with correct annotations, `apply_yaml` dry-run by
   default, `K8N_MCP_READONLY=true` drops the three writing tools, and a graceful
   refusal when no cluster is connected.
+- **Against a real cluster** (Docker Desktop, kind-backed, v1.36.1, 6 nodes):
+  connect and list (87 resources, 86 correctly marked protected); compile →
+  dry-run (validated server-side, created nothing) → apply; the watch stream
+  carrying an actual rollout, Pending → Running → Deployment Ready; pod logs,
+  events and a diagnose that caught a real `ErrImagePull` with the registry's
+  own error; metrics against metrics-server; delete refused with 403 on
+  kube-system machinery and a cascade delete reported as 3 removed UIDs;
+  the full Helm lifecycle — install, list, history, upgrade, rollback,
+  uninstall — with the pinned chart version honoured and no `repositories.yaml`
+  written; compile → import → compile byte-identical on cluster YAML.
+- k8n's Deployment status matches `kubectl get deploy` during a stuck rollout:
+  both say Ready while the old ReplicaSet still serves. The failing pod shows
+  up as a Pod in `ErrImagePull`, and diagnose reports it — but nothing at the
+  Deployment level says "this rollout is not progressing". `Resource` has no
+  field for it. Worth adding.
 
 ---
 
