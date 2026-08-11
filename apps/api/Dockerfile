@@ -16,11 +16,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build static binary
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags="-w -s" \
-    -o /app/server \
-    main.go
+# Build both binaries: the HTTP server, and the stdio MCP server that MCP
+# clients spawn directly.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/server . && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/k8n-mcp ./cmd/k8n-mcp
 
 # Stage 2: Minimal runtime image
 FROM alpine:3.21
@@ -32,8 +31,8 @@ RUN addgroup -S k8n && adduser -S k8n -G k8n
 
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /app/server .
+# Copy binaries from builder
+COPY --from=builder /app/server /app/k8n-mcp ./
 
 # Set ownership
 RUN chown -R k8n:k8n /app

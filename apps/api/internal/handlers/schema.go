@@ -31,8 +31,7 @@ func GetSchema(clientGetter func() *k8s.Client) gin.HandlerFunc {
 		}
 
 		client := clientGetter()
-		if client == nil || client.Clientset == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "K8s client not initialized"})
+		if !requireCluster(c, client) {
 			return
 		}
 
@@ -67,70 +66,70 @@ func generateSimplifiedSchema(kind string) map[string]interface{} {
 	switch kind {
 	case "Deployment":
 		return map[string]interface{}{
-			"title": "Deployment",
-			"type":  "object",
+			"title":    "Deployment",
+			"type":     "object",
 			"required": []string{"name", "image", "replicas", "port"},
 			"properties": map[string]interface{}{
 				"name": map[string]interface{}{
-					"type": "string",
+					"type":  "string",
 					"title": "Deployment Name",
 				},
 				"image": map[string]interface{}{
-					"type": "string",
+					"type":  "string",
 					"title": "Container Image",
 				},
 				"replicas": map[string]interface{}{
-					"type": "integer",
-					"title": "Replicas",
+					"type":    "integer",
+					"title":   "Replicas",
 					"default": 1,
 				},
 				"port": map[string]interface{}{
-					"type": "integer",
-					"title": "Container Port",
+					"type":    "integer",
+					"title":   "Container Port",
 					"default": 80,
 				},
 			},
 		}
 	case "Service":
 		return map[string]interface{}{
-			"title": "Service",
-			"type":  "object",
+			"title":    "Service",
+			"type":     "object",
 			"required": []string{"name", "port", "targetPort", "type"},
 			"properties": map[string]interface{}{
 				"name": map[string]interface{}{
-					"type": "string",
+					"type":  "string",
 					"title": "Service Name",
 				},
 				"port": map[string]interface{}{
-					"type": "integer",
-					"title": "Service Port (External)",
+					"type":    "integer",
+					"title":   "Service Port (External)",
 					"default": 80,
 				},
 				"targetPort": map[string]interface{}{
-					"type": "integer",
-					"title": "Target Port (Container)",
+					"type":    "integer",
+					"title":   "Target Port (Container)",
 					"default": 80,
 				},
 				"type": map[string]interface{}{
-					"type": "string",
-					"title": "Service Type",
-					"enum": []string{"ClusterIP", "NodePort", "LoadBalancer"},
+					"type":    "string",
+					"title":   "Service Type",
+					"enum":    []string{"ClusterIP", "NodePort", "LoadBalancer"},
 					"default": "ClusterIP",
 				},
 			},
 		}
 	case "ConfigMap":
 		return map[string]interface{}{
-			"title": "ConfigMap",
-			"type":  "object",
+			"title":    "ConfigMap",
+			"type":     "object",
 			"required": []string{"name", "data"},
 			"properties": map[string]interface{}{
 				"name": map[string]interface{}{
-					"type": "string",
+					"type":  "string",
 					"title": "ConfigMap Name",
 				},
 				"data": map[string]interface{}{
-					"type": "string",
+					"type":  "string",
 					"title": "Data (JSON format)",
 				},
 			},

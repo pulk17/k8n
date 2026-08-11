@@ -87,7 +87,7 @@ export default function ApiConnectionError({ error, onRetry }: ApiConnectionErro
           {/* Common Issues */}
           <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/30 rounded p-4">
             <p className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
-              💡 Common Issues:
+              Common causes
             </p>
             <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1 list-disc list-inside">
               <li>API server not started</li>

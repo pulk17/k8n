@@ -61,6 +61,14 @@ services:
       - DATABASE_URL=postgres://k8n:${POSTGRES_PASSWORD:-k8npassword}@db:5432/k8n_db?sslmode=disable
       - GIN_MODE=release
       - ALLOWED_ORIGINS=http://localhost,http://localhost:${K8N_PORT:-80},${ALLOWED_ORIGINS:-}
+      # Optional. Without a key the AI panel is hidden and k8n works normally.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      # Leave the MCP server read-only unless you trust everything that can
+      # reach this host: it is not behind any authentication.
+      - K8N_MCP_READONLY=${K8N_MCP_READONLY:-true}
+      # Optional: MCP servers whose tools the assistant may also call.
+      - K8N_MCP_SERVERS=${K8N_MCP_SERVERS:-}
     volumes:
       # Mount host kubeconfig so the API can talk to K8s clusters
       - ${KUBECONFIG_PATH:-~/.kube}:/home/k8n/.kube:ro

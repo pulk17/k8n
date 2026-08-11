@@ -14,18 +14,28 @@ import (
 var db *sql.DB
 
 func InitDB(dsn string) error {
-	var err error
-	db, err = sql.Open("postgres", dsn)
+	// sql.Open only validates the DSN — it does not connect. Without the Ping
+	// below (and the reset on failure) `db` would be non-nil while every query
+	// fails, which is how workflow listing ended up returning 500s instead of
+	// degrading to "storage unavailable".
+	conn, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return err
 	}
 
 	// Configure connection pool to prevent exhaustion under load
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	conn.SetMaxOpenConns(25)
+	conn.SetMaxIdleConns(5)
+	conn.SetConnMaxLifetime(5 * time.Minute)
 
-	return db.Ping()
+	if err := conn.Ping(); err != nil {
+		conn.Close()
+		db = nil
+		return err
+	}
+
+	db = conn
+	return nil
 }
 
 func GetDB() *sql.DB {
@@ -42,7 +52,10 @@ type SaveGraphRequest struct {
 func SaveGraph() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if db == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database not initialized"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error": "Workflow storage is unavailable",
+				"hint":  "Start Postgres (docker-compose up -d) to save and load workflows. Everything else in k8n works without it.",
+			})
 			return
 		}
 
@@ -86,12 +99,15 @@ func SaveGraph() gin.HandlerFunc {
 func LoadGraph() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if db == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database not initialized"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error": "Workflow storage is unavailable",
+				"hint":  "Start Postgres (docker-compose up -d) to save and load workflows. Everything else in k8n works without it.",
+			})
 			return
 		}
 
 		id := c.Param("id")
-		
+
 		var req SaveGraphRequest
 		var graphJsonStr string
 		err := db.QueryRow("SELECT id, name, namespace, graph_json FROM graphs WHERE id = $1", id).Scan(&req.ID, &req.Name, &req.Namespace, &graphJsonStr)
@@ -115,8 +131,11 @@ func LoadGraph() gin.HandlerFunc {
 
 func ListGraphs() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// k8n runs fine without Postgres — you just cannot persist workflows. An
+		// empty list is the honest answer here; erroring would break the whole
+		// workflow manager for anyone who has not started a database.
 		if db == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database not initialized"})
+			c.JSON(http.StatusOK, []map[string]interface{}{})
 			return
 		}
 
@@ -151,11 +170,13 @@ func ListGraphs() gin.HandlerFunc {
 	}
 }
 
-
 func DeleteGraph() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if db == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database not initialized"})
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error": "Workflow storage is unavailable",
+				"hint":  "Start Postgres (docker-compose up -d) to save and load workflows. Everything else in k8n works without it.",
+			})
 			return
 		}
 

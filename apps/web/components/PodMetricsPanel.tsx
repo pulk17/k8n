@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { X, Activity, Cpu, HardDrive, RefreshCw } from 'lucide-react';
-import { API_URL } from '../lib/api';
+import { errorMessage, fetchPodMetrics } from '../lib/api';
 
 interface ContainerMetrics {
   name: string;
@@ -30,35 +30,23 @@ export default function PodMetricsPanel({ podName, namespace, onClose }: PodMetr
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  const fetchMetrics = async () => {
+  const refresh = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
-      const res = await fetch(`${API_URL}/api/metrics/pod/${podName}?namespace=${namespace}`);
-      
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to fetch metrics');
-      }
-      
-      const data = await res.json();
-      setMetrics(data);
-    } catch (err: any) {
-      setError(err.message);
-      console.error('Failed to fetch pod metrics:', err);
+      setMetrics(await fetchPodMetrics(podName, namespace));
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, [podName, namespace]);
 
   useEffect(() => {
-    fetchMetrics();
-    
-    if (autoRefresh) {
-      const interval = setInterval(fetchMetrics, 5000); // Refresh every 5 seconds
-      return () => clearInterval(interval);
-    }
-  }, [podName, namespace, autoRefresh]);
+    refresh();
+    if (!autoRefresh) return;
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
+  }, [refresh, autoRefresh]);
 
   return (
     <div className="fixed right-4 top-20 w-96 bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl z-50 max-h-[80vh] overflow-hidden flex flex-col">

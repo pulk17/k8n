@@ -22,8 +22,7 @@ type CRDSummary struct {
 func GetCRDs(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client := clientGetter()
-		if client == nil || client.DiscoveryClient == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "K8s discovery client not initialized"})
+		if !requireDiscovery(c, client) {
 			return
 		}
 
@@ -73,7 +72,7 @@ func GetCRDs(clientGetter func() *k8s.Client) gin.HandlerFunc {
 // FetchDynamicResources pulls instances of a given CRD using the dynamic client
 func FetchDynamicResources(dynClient dynamic.Interface, group, version, resource string) ([]Resource, error) {
 	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
-	
+
 	list, err := dynClient.Resource(gvr).Namespace("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
 		return nil, err
@@ -87,7 +86,7 @@ func FetchDynamicResources(dynClient dynamic.Interface, group, version, resource
 		}
 
 		status := "Active" // Simplification for CRDs
-		
+
 		dynResources = append(dynResources, Resource{
 			Kind:            item.GetKind(),
 			Name:            item.GetName(),
@@ -98,6 +97,6 @@ func FetchDynamicResources(dynClient dynamic.Interface, group, version, resource
 			OwnerReferences: owners,
 		})
 	}
-	
+
 	return dynResources, nil
 }

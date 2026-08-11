@@ -1,29 +1,17 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Package, RefreshCw, Trash2, History, ArrowUpCircle, ArrowDownCircle, X, CheckCircle, AlertCircle, Clock } from "lucide-react";
-import { API_URL } from "../lib/api";
-
-interface HelmRelease {
-  name: string;
-  namespace: string;
-  revision: number;
-  updated: string;
-  status: string;
-  chart: string;
-  chartVersion: string;
-  appVersion: string;
-  description: string;
-}
-
-interface ReleaseHistory {
-  revision: number;
-  updated: string;
-  status: string;
-  chart: string;
-  appVersion: string;
-  description: string;
-}
+import {
+  HelmRelease,
+  errorMessage,
+  fetchHelmHistory,
+  fetchHelmReleases,
+  rollbackHelmRelease,
+  uninstallHelmRelease,
+  upgradeHelmRelease,
+} from "../lib/api";
+import { confirmAction, notify, notifyError } from "../lib/dialog";
 
 export default function HelmReleaseManager() {
   const [releases, setReleases] = useState<HelmRelease[]>([]);
@@ -31,103 +19,79 @@ export default function HelmReleaseManager() {
   const [open, setOpen] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<HelmRelease | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<ReleaseHistory[]>([]);
+  const [history, setHistory] = useState<HelmRelease[]>([]);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeValues, setUpgradeValues] = useState("");
 
-  useEffect(() => {
-    if (open) {
-      loadReleases();
-    }
-  }, [open]);
-
-  const loadReleases = async () => {
+  const loadReleases = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/helm/releases`);
-      if (!res.ok) throw new Error('Failed to fetch releases');
-      const data = await res.json();
-      setReleases(data || []);
-    } catch (err: any) {
-      console.error('Failed to load releases:', err);
-      alert(`Failed to load Helm releases: ${err.message}`);
+      setReleases(await fetchHelmReleases());
+    } catch (err) {
+      notifyError(`Failed to load Helm releases: ${errorMessage(err)}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (open) loadReleases();
+  }, [open, loadReleases]);
 
   const loadHistory = async (release: HelmRelease) => {
     try {
-      const res = await fetch(`${API_URL}/api/helm/releases/${release.name}/history?namespace=${release.namespace}`);
-      if (!res.ok) throw new Error('Failed to fetch history');
-      const data = await res.json();
-      setHistory(data || []);
+      setHistory(await fetchHelmHistory(release.name, release.namespace));
       setShowHistory(true);
-    } catch (err: any) {
-      console.error('Failed to load history:', err);
-      alert(`Failed to load release history: ${err.message}`);
+    } catch (err) {
+      notifyError(`Failed to load history: ${errorMessage(err)}`);
     }
   };
 
-  const uninstallRelease = async (release: HelmRelease) => {
-    if (!confirm(`Are you sure you want to uninstall ${release.name}?`)) return;
-    
+  const uninstall = async (release: HelmRelease) => {
+    const ok = await confirmAction({
+      title: "Uninstall release",
+      message: `${release.name} in namespace "${release.namespace}" and everything it installed.`,
+      confirmLabel: "Uninstall",
+      danger: true,
+    });
+    if (!ok) return;
+
     try {
-      const res = await fetch(`${API_URL}/api/helm/releases/${release.name}?namespace=${release.namespace}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) throw new Error('Failed to uninstall');
-      alert(`Successfully uninstalled ${release.name}`);
+      await uninstallHelmRelease(release.name, release.namespace);
+      notify(`Uninstalled ${release.name}`, "success");
       loadReleases();
-    } catch (err: any) {
-      console.error('Failed to uninstall:', err);
-      alert(`Failed to uninstall release: ${err.message}`);
+    } catch (err) {
+      notifyError(`Failed to uninstall: ${errorMessage(err)}`);
     }
   };
 
-  const upgradeRelease = async (release: HelmRelease) => {
+  const upgrade = async (release: HelmRelease) => {
     try {
-      const res = await fetch(`${API_URL}/api/helm/releases/${release.name}/upgrade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          releaseName: release.name,
-          chartName: release.chart,
-          namespace: release.namespace,
-          valuesYaml: upgradeValues,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to upgrade');
-      const data = await res.json();
-      alert(`Successfully upgraded ${release.name} to revision ${data.revision}`);
+      const { revision } = await upgradeHelmRelease(release, upgradeValues);
+      notify(`Upgraded ${release.name} to revision ${revision}`, "success");
       setShowUpgrade(false);
       setUpgradeValues("");
       loadReleases();
-    } catch (err: any) {
-      console.error('Failed to upgrade:', err);
-      alert(`Failed to upgrade release: ${err.message}`);
+    } catch (err) {
+      notifyError(`Failed to upgrade: ${errorMessage(err)}`);
     }
   };
 
-  const rollbackRelease = async (release: HelmRelease, revision: number) => {
-    if (!confirm(`Rollback ${release.name} to revision ${revision}?`)) return;
-    
+  const rollback = async (release: HelmRelease, revision: number) => {
+    const ok = await confirmAction({
+      title: "Roll back release",
+      message: `${release.name} will be rolled back to revision ${revision}.`,
+      confirmLabel: "Roll back",
+    });
+    if (!ok) return;
+
     try {
-      const res = await fetch(`${API_URL}/api/helm/releases/${release.name}/rollback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          namespace: release.namespace,
-          revision: revision,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to rollback');
-      alert(`Successfully rolled back ${release.name} to revision ${revision}`);
+      await rollbackHelmRelease(release.name, release.namespace, revision);
+      notify(`Rolled back ${release.name} to revision ${revision}`, "success");
       setShowHistory(false);
       loadReleases();
-    } catch (err: any) {
-      console.error('Failed to rollback:', err);
-      alert(`Failed to rollback release: ${err.message}`);
+    } catch (err) {
+      notifyError(`Failed to roll back: ${errorMessage(err)}`);
     }
   };
 
@@ -149,18 +113,18 @@ export default function HelmReleaseManager() {
     return (
       <button 
         onClick={() => setOpen(true)}
-        className="absolute bottom-14 left-[140px] z-10 bg-orange-600 hover:bg-orange-700 shadow-lg rounded p-2 px-4 flex items-center gap-2 transition-colors"
+        className="absolute bottom-4 left-[412px] z-10 flex items-center gap-2 rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-gray-300 transition-colors hover:bg-neutral-800"
         title="Manage Helm Releases"
       >
-        <Package className="w-4 h-4 text-white" />
-        <span className="text-xs font-semibold text-white">Releases</span>
+        <Package className="h-4 w-4" />
+        <span className="text-xs font-medium">Releases</span>
       </button>
     );
   }
 
   return (
     <>
-      <div className="absolute bottom-14 left-[140px] z-20 w-[600px] bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 shadow-lg rounded overflow-hidden max-h-[70vh] flex flex-col">
+      <div className="absolute bottom-16 left-[292px] z-20 w-[600px] bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 shadow-lg rounded overflow-hidden max-h-[70vh] flex flex-col">
         <div className="bg-gray-50 dark:bg-neutral-800 border-b border-gray-200 dark:border-neutral-700 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Package className="w-5 h-5 text-gray-700 dark:text-gray-300" />
@@ -239,7 +203,7 @@ export default function HelmReleaseManager() {
                         <History className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => uninstallRelease(release)}
+                        onClick={() => uninstall(release)}
                         className="p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
                         title="Uninstall"
                       >
@@ -293,7 +257,7 @@ export default function HelmReleaseManager() {
                     </div>
                     {rev.revision !== selectedRelease.revision && (
                       <button
-                        onClick={() => rollbackRelease(selectedRelease, rev.revision)}
+                        onClick={() => rollback(selectedRelease, rev.revision)}
                         className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                       >
                         <ArrowDownCircle className="w-3 h-3" />
@@ -339,7 +303,7 @@ export default function HelmReleaseManager() {
                   Cancel
                 </button>
                 <button
-                  onClick={() => upgradeRelease(selectedRelease)}
+                  onClick={() => upgrade(selectedRelease)}
                   className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-2"
                 >
                   <ArrowUpCircle className="w-4 h-4" />

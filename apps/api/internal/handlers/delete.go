@@ -3,53 +3,76 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/restmapper"
 )
 
-// DeleteResource deletes a Kubernetes resource
+// ErrProtected is returned when a delete targets cluster machinery.
+var ErrProtected = fmt.Errorf("resource is part of the cluster's own machinery and cannot be deleted through k8n")
+
+// resolveKind turns a bare kind name ("Deployment", "HorizontalPodAutoscaler",
+// a CRD's kind) into the REST mapping for it, the same way kubectl resolves a
+// resource argument.
+func resolveKind(client *k8s.Client, kind string) (*meta.RESTMapping, error) {
+	groups, err := restmapper.GetAPIGroupResources(client.DiscoveryClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover API resources: %w", err)
+	}
+	mapper := restmapper.NewDiscoveryRESTMapper(groups)
+
+	// KindsFor resolves a partial reference; the first result is the one from
+	// the preferred API version.
+	kinds, err := mapper.KindsFor(schema.GroupVersionResource{Resource: strings.ToLower(kind)})
+	if err != nil || len(kinds) == 0 {
+		return nil, fmt.Errorf("unknown resource kind %q", kind)
+	}
+
+	return mapper.RESTMapping(kinds[0].GroupKind(), kinds[0].Version)
+}
+
+// DeleteResource removes a resource by kind and name.
+//
+// It used to switch over a hardcoded list of eleven kinds, so anything the
+// canvas could create but that list did not mention — PVCs, HPAs, RBAC, every
+// CRD — could be deployed and then never cleaned up. Discovery handles all of
+// them.
+//
+// force means what it means in kubectl: no grace period, background cascade.
+// Use it for objects stuck terminating, not as a way past the protection check.
 func DeleteResource(client *k8s.Client, kind, name, namespace string, force bool) error {
-	if client == nil {
-		return fmt.Errorf("k8s client not initialized")
+	if client == nil || client.DynamicClient == nil {
+		return fmt.Errorf("no cluster connection")
+	}
+	if IsProtected(name, namespace) {
+		return ErrProtected
 	}
 
-	ctx := context.Background()
-	
-	// Configure delete options
-	deleteOptions := metav1.DeleteOptions{}
+	mapping, err := resolveKind(client, kind)
+	if err != nil {
+		return err
+	}
+
+	var dr dynamic.ResourceInterface = client.DynamicClient.Resource(mapping.Resource)
+	if mapping.Scope.Name() != meta.RESTScopeNameRoot {
+		if namespace == "" {
+			namespace = "default"
+		}
+		dr = client.DynamicClient.Resource(mapping.Resource).Namespace(namespace)
+	}
+
+	opts := metav1.DeleteOptions{}
 	if force {
-		// Force delete: set grace period to 0 and propagation policy to background
-		gracePeriod := int64(0)
-		deleteOptions.GracePeriodSeconds = &gracePeriod
-		propagationPolicy := metav1.DeletePropagationBackground
-		deleteOptions.PropagationPolicy = &propagationPolicy
+		grace := int64(0)
+		policy := metav1.DeletePropagationBackground
+		opts.GracePeriodSeconds = &grace
+		opts.PropagationPolicy = &policy
 	}
 
-	switch kind {
-	case "Deployment":
-		return client.Clientset.AppsV1().Deployments(namespace).Delete(ctx, name, deleteOptions)
-	case "Service":
-		return client.Clientset.CoreV1().Services(namespace).Delete(ctx, name, deleteOptions)
-	case "ConfigMap":
-		return client.Clientset.CoreV1().ConfigMaps(namespace).Delete(ctx, name, deleteOptions)
-	case "Secret":
-		return client.Clientset.CoreV1().Secrets(namespace).Delete(ctx, name, deleteOptions)
-	case "Pod":
-		return client.Clientset.CoreV1().Pods(namespace).Delete(ctx, name, deleteOptions)
-	case "StatefulSet":
-		return client.Clientset.AppsV1().StatefulSets(namespace).Delete(ctx, name, deleteOptions)
-	case "DaemonSet":
-		return client.Clientset.AppsV1().DaemonSets(namespace).Delete(ctx, name, deleteOptions)
-	case "Job":
-		return client.Clientset.BatchV1().Jobs(namespace).Delete(ctx, name, deleteOptions)
-	case "CronJob":
-		return client.Clientset.BatchV1().CronJobs(namespace).Delete(ctx, name, deleteOptions)
-	case "Ingress":
-		return client.Clientset.NetworkingV1().Ingresses(namespace).Delete(ctx, name, deleteOptions)
-	case "ReplicaSet":
-		return client.Clientset.AppsV1().ReplicaSets(namespace).Delete(ctx, name, deleteOptions)
-	default:
-		return fmt.Errorf("unsupported resource kind: %s", kind)
-	}
+	return dr.Delete(context.Background(), name, opts)
 }

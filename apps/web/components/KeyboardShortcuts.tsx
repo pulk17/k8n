@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 
 interface KeyboardShortcutsProps {
   onSave: () => void;
@@ -85,7 +86,7 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo,
             onClick={() => setShowHelp(false)}
             className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 

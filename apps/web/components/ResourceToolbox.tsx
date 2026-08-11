@@ -1,106 +1,104 @@
+"use client";
+
 import { DragEvent, useEffect, useState } from "react";
 import { CopyPlus, Layers } from "lucide-react";
 import { fetchCRDs } from "../lib/api";
+import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS } from "../lib/constants";
+import ConnectionLegend from "./ConnectionLegend";
+
+// Kinds you can drag onto the canvas, in the order they are worth reaching for.
+// Colour is not repeated here: it comes from RESOURCE_COLORS, so the swatch in
+// this list is always the colour the node will actually be. This list used to
+// carry its own Tailwind classes and had drifted out of step with the nodes.
+const CATEGORIES: { name: string; kinds: string[] }[] = [
+  {
+    name: "Workloads",
+    kinds: ["Deployment", "StatefulSet", "DaemonSet", "Pod", "Job", "CronJob"],
+  },
+  {
+    name: "Networking",
+    kinds: ["Service", "Ingress", "NetworkPolicy"],
+  },
+  {
+    name: "Configuration",
+    kinds: ["ConfigMap", "Secret"],
+  },
+  {
+    name: "Storage",
+    kinds: ["PersistentVolumeClaim", "PersistentVolume"],
+  },
+  {
+    name: "Access control",
+    kinds: ["ServiceAccount", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding"],
+  },
+  {
+    name: "Scaling",
+    kinds: ["HorizontalPodAutoscaler"],
+  },
+];
 
 export default function ResourceToolbox() {
   const [crds, setCrds] = useState<{ kind: string; name: string; group: string }[]>([]);
 
   useEffect(() => {
-    fetchCRDs().then(setCrds).catch(() => {
-      // Silently ignore — API may not be running yet, CRDs are optional
-    });
+    // CRDs are a bonus; without a cluster the built-in kinds still work.
+    fetchCRDs().then(setCrds).catch(() => {});
   }, []);
-  const onDragStart = (event: DragEvent<HTMLDivElement>, nodeType: string, kind: string) => {
-    event.dataTransfer.setData("application/reactflow", nodeType);
+
+  const onDragStart = (event: DragEvent<HTMLDivElement>, kind: string) => {
+    event.dataTransfer.setData("application/reactflow", "k8sNode");
     event.dataTransfer.setData("application/k8sKind", kind);
     event.dataTransfer.effectAllowed = "move";
   };
 
-  const resourceTypes = [
-    // Workloads
-    { kind: "Deployment", color: "bg-blue-500", border: "border-blue-500", category: "Workloads" },
-    { kind: "StatefulSet", color: "bg-cyan-500", border: "border-cyan-500", category: "Workloads" },
-    { kind: "DaemonSet", color: "bg-orange-500", border: "border-orange-500", category: "Workloads" },
-    { kind: "Job", color: "bg-teal-500", border: "border-teal-500", category: "Workloads" },
-    { kind: "CronJob", color: "bg-teal-600", border: "border-teal-600", category: "Workloads" },
-    { kind: "Pod", color: "bg-gray-500", border: "border-gray-500", category: "Workloads" },
-    
-    // Network
-    { kind: "Service", color: "bg-green-500", border: "border-green-500", category: "Network" },
-    { kind: "Ingress", color: "bg-pink-500", border: "border-pink-500", category: "Network" },
-    { kind: "NetworkPolicy", color: "bg-red-500", border: "border-red-500", category: "Network" },
-    
-    // Config & Storage
-    { kind: "ConfigMap", color: "bg-yellow-500", border: "border-yellow-500", category: "Config" },
-    { kind: "Secret", color: "bg-red-600", border: "border-red-600", category: "Config" },
-    { kind: "PersistentVolumeClaim", color: "bg-purple-500", border: "border-purple-500", category: "Storage" },
-    { kind: "PersistentVolume", color: "bg-purple-600", border: "border-purple-600", category: "Storage" },
-    
-    // Security & RBAC
-    { kind: "ServiceAccount", color: "bg-indigo-500", border: "border-indigo-500", category: "Security" },
-    { kind: "Role", color: "bg-indigo-600", border: "border-indigo-600", category: "Security" },
-    { kind: "RoleBinding", color: "bg-indigo-700", border: "border-indigo-700", category: "Security" },
-    { kind: "ClusterRole", color: "bg-violet-600", border: "border-violet-600", category: "Security" },
-    { kind: "ClusterRoleBinding", color: "bg-violet-700", border: "border-violet-700", category: "Security" },
-    
-    // Autoscaling
-    { kind: "HorizontalPodAutoscaler", color: "bg-sky-500", border: "border-sky-500", category: "Autoscaling" },
-  ];
-
-  // Group resources by category
-  const groupedResources = resourceTypes.reduce((acc, res) => {
-    if (!acc[res.category]) acc[res.category] = [];
-    acc[res.category].push(res);
-    return acc;
-  }, {} as Record<string, typeof resourceTypes>);
-
   return (
-    <div className="absolute top-16 left-4 z-10 w-64 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md border border-gray-200 dark:border-neutral-800 rounded-2xl shadow-sm flex flex-col overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-900/50 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Resources</h2>
-        <CopyPlus className="w-4 h-4 text-gray-400" />
+    <div className="absolute left-4 top-16 z-10 flex w-64 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/95 shadow-sm backdrop-blur-md">
+      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+        <h2 className="text-sm font-semibold text-gray-300">Resources</h2>
+        <CopyPlus className="h-4 w-4 text-gray-500" />
       </div>
-      
-      <div className="p-3 space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
-        {Object.entries(groupedResources).map(([category, resources]) => (
-          <div key={category}>
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 px-2 uppercase tracking-wide">
-              {category}
+
+      <div className="custom-scrollbar max-h-[calc(100vh-320px)] space-y-3 overflow-y-auto p-3">
+        {CATEGORIES.map(({ name, kinds }) => (
+          <div key={name}>
+            <h3 className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              {name}
             </h3>
             <div className="space-y-1">
-              {resources.map((res) => (
-                <div
-                  key={res.kind}
-                  className={`flex items-center space-x-3 p-2 rounded-md cursor-grab active:cursor-grabbing border ${res.border} bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors shadow-sm`}
-                  onDragStart={(event) => onDragStart(event, "k8sNode", res.kind)}
-                  draggable
-                >
-                  <div className={`w-3 h-3 rounded-full ${res.color}`} />
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                    {res.kind}
-                  </span>
-                </div>
-              ))}
+              {kinds.map(kind => {
+                const color = RESOURCE_COLORS[kind] || DEFAULT_RESOURCE_COLOR;
+                return (
+                  <div
+                    key={kind}
+                    draggable
+                    onDragStart={event => onDragStart(event, kind)}
+                    className="flex cursor-grab items-center gap-2.5 rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5 transition-colors hover:border-neutral-600 hover:bg-neutral-800 active:cursor-grabbing"
+                  >
+                    <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                    <span className="text-xs font-medium text-gray-300">{kind}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
-        
+
         {crds.length > 0 && (
-          <div className="pt-2 mt-2 border-t border-gray-100 dark:border-neutral-800">
-            <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 px-2 uppercase tracking-wide">Custom Resources</h3>
-            {crds.map((crd) => (
+          <div className="border-t border-neutral-800 pt-3">
+            <h3 className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              Custom resources
+            </h3>
+            {crds.map(crd => (
               <div
                 key={crd.name}
-                className="flex items-center space-x-3 p-2 mt-1 rounded-md cursor-grab active:cursor-grabbing border border-purple-500/30 bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors shadow-sm"
-                onDragStart={(event) => onDragStart(event, "k8sNode", crd.kind)}
                 draggable
+                onDragStart={event => onDragStart(event, crd.kind)}
+                className="mt-1 flex cursor-grab items-center gap-2.5 rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5 transition-colors hover:border-neutral-600 hover:bg-neutral-800 active:cursor-grabbing"
               >
-                <Layers className="w-4 h-4 text-purple-500" />
-                <div className="flex flex-col">
-                  <span className="text-xs font-medium text-gray-700 dark:text-gray-300 leading-tight">
-                    {crd.kind}
-                  </span>
-                  <span className="text-[10px] text-gray-400 mt-0.5 max-w-[150px] truncate" title={crd.group}>
+                <Layers className="h-3.5 w-3.5" style={{ color: DEFAULT_RESOURCE_COLOR }} />
+                <div className="flex min-w-0 flex-col">
+                  <span className="text-xs font-medium leading-tight text-gray-300">{crd.kind}</span>
+                  <span className="truncate text-[10px] text-gray-500" title={crd.group}>
                     {crd.group}
                   </span>
                 </div>
@@ -109,8 +107,15 @@ export default function ResourceToolbox() {
           </div>
         )}
       </div>
-      <div className="px-4 py-3 border-t border-gray-100 dark:border-neutral-800 text-xs text-gray-500 text-center">
-        Drag to canvas to create
+
+      <div className="space-y-2 border-t border-neutral-800 px-3 py-2.5">
+        <p className="text-[10px] text-gray-500">Drag onto the canvas to add.</p>
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            Connections
+          </p>
+          <ConnectionLegend />
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,6 @@
-import { Node, Edge } from "reactflow";
+import { Node } from "reactflow";
+
+export type TemplateIcon = "web" | "microservices" | "observability" | "batch";
 
 export interface Template {
   id: string;
@@ -7,7 +9,8 @@ export interface Template {
   category: string;
   nodes: Omit<Node, 'id'>[];
   edges: { sourceIdx: number; targetIdx: number; animated?: boolean; color?: string }[];
-  icon: string;
+  /** Key into TEMPLATE_ICONS; see WorkflowManager. */
+  icon: TemplateIcon;
 }
 
 export const templates: Template[] = [
@@ -16,7 +19,7 @@ export const templates: Template[] = [
     name: "Production Web App",
     description: "Full production setup with auto-scaling, ingress, config, and secrets",
     category: "Web",
-    icon: "🚀",
+    icon: "web",
     nodes: [
       {
         type: "k8sNode",
@@ -26,7 +29,6 @@ export const templates: Template[] = [
           name: "app-config",
           namespace: "default",
           status: "Not Deployed",
-          color: "#eab308",
           configData: "APP_ENV=production\nLOG_LEVEL=info\nAPI_TIMEOUT=30",
         },
       },
@@ -38,7 +40,6 @@ export const templates: Template[] = [
           name: "app-secrets",
           namespace: "default",
           status: "Not Deployed",
-          color: "#ef4444",
           secretType: "Opaque",
           secretData: "API_KEY=your-api-key\nDB_PASSWORD=your-db-password",
         },
@@ -51,7 +52,6 @@ export const templates: Template[] = [
           name: "web-app",
           namespace: "default",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 3,
           image: "nginx:alpine",
           containerPort: 80,
@@ -65,7 +65,6 @@ export const templates: Template[] = [
           name: "web-service",
           namespace: "default",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 80,
           targetPort: 80,
           serviceType: "ClusterIP",
@@ -79,7 +78,6 @@ export const templates: Template[] = [
           name: "web-ingress",
           namespace: "default",
           status: "Not Deployed",
-          color: "#ec4899",
           host: "myapp.example.com",
           path: "/",
           tlsEnabled: true,
@@ -93,7 +91,6 @@ export const templates: Template[] = [
           name: "web-app-hpa",
           namespace: "default",
           status: "Not Deployed",
-          color: "#06b6d4",
           minReplicas: 3,
           maxReplicas: 10,
           targetCPU: 70,
@@ -113,7 +110,7 @@ export const templates: Template[] = [
     name: "Microservices Stack",
     description: "Complete microservices with frontend, backend, database, and cache",
     category: "Full Stack",
-    icon: "🏗️",
+    icon: "microservices",
     nodes: [
       {
         type: "k8sNode",
@@ -123,7 +120,6 @@ export const templates: Template[] = [
           name: "frontend",
           namespace: "default",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 2,
           image: "nginx:alpine",
           containerPort: 80,
@@ -137,7 +133,6 @@ export const templates: Template[] = [
           name: "frontend-svc",
           namespace: "default",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 80,
           targetPort: 80,
           serviceType: "LoadBalancer",
@@ -151,7 +146,6 @@ export const templates: Template[] = [
           name: "backend-config",
           namespace: "default",
           status: "Not Deployed",
-          color: "#eab308",
           configData: "DB_HOST=postgres-svc\nREDIS_HOST=redis-svc\nPORT=8080",
         },
       },
@@ -163,7 +157,6 @@ export const templates: Template[] = [
           name: "backend-api",
           namespace: "default",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 3,
           image: "hashicorp/http-echo:latest",
           containerPort: 8080,
@@ -179,7 +172,6 @@ export const templates: Template[] = [
           name: "backend-svc",
           namespace: "default",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 8080,
           targetPort: 8080,
           serviceType: "ClusterIP",
@@ -193,7 +185,6 @@ export const templates: Template[] = [
           name: "backend-hpa",
           namespace: "default",
           status: "Not Deployed",
-          color: "#06b6d4",
           minReplicas: 3,
           maxReplicas: 15,
           targetCPU: 75,
@@ -207,7 +198,6 @@ export const templates: Template[] = [
           name: "redis-cache",
           namespace: "default",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 1,
           image: "redis:7-alpine",
           containerPort: 6379,
@@ -221,7 +211,6 @@ export const templates: Template[] = [
           name: "redis-svc",
           namespace: "default",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 6379,
           targetPort: 6379,
           serviceType: "ClusterIP",
@@ -235,7 +224,6 @@ export const templates: Template[] = [
           name: "postgres-secret",
           namespace: "default",
           status: "Not Deployed",
-          color: "#ef4444",
           secretType: "Opaque",
           secretData: "POSTGRES_PASSWORD=securepassword\nPOSTGRES_USER=appuser",
         },
@@ -248,7 +236,6 @@ export const templates: Template[] = [
           name: "postgres-pvc",
           namespace: "default",
           status: "Not Deployed",
-          color: "#8b5cf6",
           storageSize: "20Gi",
           accessMode: "ReadWriteOnce",
           storageClass: "standard",
@@ -262,7 +249,6 @@ export const templates: Template[] = [
           name: "postgres-db",
           namespace: "default",
           status: "Not Deployed",
-          color: "#06b6d4",
           replicas: 1,
           image: "postgres:15-alpine",
           containerPort: 5432,
@@ -282,7 +268,6 @@ export const templates: Template[] = [
           name: "postgres-svc",
           namespace: "default",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 5432,
           targetPort: 5432,
           serviceType: "ClusterIP",
@@ -305,7 +290,7 @@ export const templates: Template[] = [
     name: "Monitoring & Logging",
     description: "Observability stack with Prometheus, Grafana, and Fluentd",
     category: "Monitoring",
-    icon: "📊",
+    icon: "observability",
     nodes: [
       {
         type: "k8sNode",
@@ -315,7 +300,6 @@ export const templates: Template[] = [
           name: "prometheus-config",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#eab308",
           configData: "global:\n  scrape_interval: 15s\n  evaluation_interval: 15s",
         },
       },
@@ -327,7 +311,6 @@ export const templates: Template[] = [
           name: "prometheus",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 1,
           image: "prom/prometheus:v2.45.0",
           containerPort: 9090,
@@ -341,7 +324,6 @@ export const templates: Template[] = [
           name: "prometheus-svc",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 9090,
           targetPort: 9090,
           serviceType: "ClusterIP",
@@ -355,7 +337,6 @@ export const templates: Template[] = [
           name: "grafana-datasources",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#eab308",
           configData: "apiVersion: 1\ndatasources:\n  - name: Prometheus\n    type: prometheus\n    url: http://prometheus-svc:9090\n    access: proxy\n    isDefault: true",
         },
       },
@@ -367,7 +348,6 @@ export const templates: Template[] = [
           name: "grafana",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 1,
           image: "grafana/grafana:10.0.0",
           containerPort: 3000,
@@ -381,7 +361,6 @@ export const templates: Template[] = [
           name: "grafana-svc",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 3000,
           targetPort: 3000,
           serviceType: "LoadBalancer",
@@ -395,7 +374,6 @@ export const templates: Template[] = [
           name: "fluentd-config",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#eab308",
           configData: "<source>\n  @type tail\n  path /var/log/containers/*.log\n  pos_file /var/log/fluentd-containers.log.pos\n  tag kubernetes.*\n  read_from_head true\n</source>",
         },
       },
@@ -407,7 +385,6 @@ export const templates: Template[] = [
           name: "fluentd-logger",
           namespace: "monitoring",
           status: "Not Deployed",
-          color: "#f59e0b",
           image: "fluent/fluentd-kubernetes-daemonset:v1.16-debian-elasticsearch7-1",
           containerPort: 24224,
         },
@@ -426,7 +403,7 @@ export const templates: Template[] = [
     name: "Batch Processing Pipeline",
     description: "ETL pipeline with scheduled jobs and auto-scaling workers",
     category: "Jobs",
-    icon: "⚙️",
+    icon: "batch",
     nodes: [
       {
         type: "k8sNode",
@@ -436,7 +413,6 @@ export const templates: Template[] = [
           name: "redis-queue",
           namespace: "default",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 1,
           image: "redis:7-alpine",
           containerPort: 6379,
@@ -450,7 +426,6 @@ export const templates: Template[] = [
           name: "redis-queue-svc",
           namespace: "default",
           status: "Not Deployed",
-          color: "#22c55e",
           port: 6379,
           targetPort: 6379,
           serviceType: "ClusterIP",
@@ -464,7 +439,6 @@ export const templates: Template[] = [
           name: "job-config",
           namespace: "default",
           status: "Not Deployed",
-          color: "#eab308",
           configData: "BATCH_SIZE=1000\nRETRY_COUNT=3\nTIMEOUT=300\nREDIS_HOST=redis-queue-svc\nREDIS_PORT=6379",
         },
       },
@@ -476,7 +450,6 @@ export const templates: Template[] = [
           name: "data-ingestion",
           namespace: "default",
           status: "Not Deployed",
-          color: "#14b8a6",
           image: "busybox:latest",
           schedule: "*/5 * * * *",
           spec: "schedule: \"*/5 * * * *\"\njobTemplate:\n  spec:\n    template:\n      spec:\n        containers:\n        - name: ingestion\n          image: busybox:latest\n          command: [\"sh\", \"-c\", \"echo 'Ingesting data at' $(date); sleep 10; echo 'Done'\"]\n        restartPolicy: OnFailure",
@@ -490,7 +463,6 @@ export const templates: Template[] = [
           name: "processing-worker",
           namespace: "default",
           status: "Not Deployed",
-          color: "#3b82f6",
           replicas: 3,
           image: "busybox:latest",
           containerPort: 8080,
@@ -505,7 +477,6 @@ export const templates: Template[] = [
           name: "worker-hpa",
           namespace: "default",
           status: "Not Deployed",
-          color: "#06b6d4",
           minReplicas: 3,
           maxReplicas: 20,
           targetCPU: 80,
@@ -519,7 +490,6 @@ export const templates: Template[] = [
           name: "cleanup-job",
           namespace: "default",
           status: "Not Deployed",
-          color: "#14b8a6",
           image: "busybox:latest",
           schedule: "0 2 * * *",
           spec: "schedule: \"0 2 * * *\"\njobTemplate:\n  spec:\n    template:\n      spec:\n        containers:\n        - name: cleanup\n          image: busybox:latest\n          command: [\"sh\", \"-c\", \"echo 'Cleaning up old data at' $(date); sleep 5; echo 'Cleanup complete'\"]\n        restartPolicy: OnFailure",

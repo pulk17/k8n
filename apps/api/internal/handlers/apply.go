@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 )
 
@@ -55,8 +57,7 @@ func parseYAML(yamlString string) ([]*unstructured.Unstructured, error) {
 func ApplyResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client := clientGetter()
-		if client == nil || client.DynamicClient == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "K8s client not initialized"})
+		if !requireDynamic(c, client) {
 			return
 		}
 
@@ -68,99 +69,104 @@ func ApplyResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			return
 		}
 
-		objects, err := parseYAML(req.YAML)
+		applied, errorsList, err := ApplyManifests(c.Request.Context(), client, req.YAML, isDryRun)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse YAML", "details": err.Error()})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-
-		gr, err := restmapper.GetAPIGroupResources(client.DiscoveryClient)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to discover API resources", "details": err.Error()})
-			return
-		}
-		mapper := restmapper.NewDiscoveryRESTMapper(gr)
-
-		// Collect unique namespaces from all objects
-		namespacesToCreate := make(map[string]bool)
-		for _, obj := range objects {
-			ns := obj.GetNamespace()
-			if ns != "" && ns != "default" && ns != "kube-system" && ns != "kube-public" && ns != "kube-node-lease" {
-				namespacesToCreate[ns] = true
-			}
-		}
-
-		// Create namespaces if they don't exist
-		for ns := range namespacesToCreate {
-			opts := metav1.CreateOptions{}
-			if isDryRun {
-				opts.DryRun = []string{metav1.DryRunAll}
-			}
-			
-			_, err := client.Clientset.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: ns,
-				},
-			}, opts)
-			
-			// Ignore error if namespace already exists
-			if err != nil && !strings.Contains(err.Error(), "already exists") {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create namespace: " + ns, "details": err.Error()})
-				return
-			}
-		}
-
-		var errorsList []ErrorItem
-		for _, obj := range objects {
-			gvk := obj.GroupVersionKind()
-			mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-			if err != nil {
-				errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: "Unknown resource type: " + err.Error()})
-				continue
-			}
-
-			var dr dynamicResourceInterface
-			if mapping.Scope.Name() == meta.RESTScopeNameRoot {
-				dr = client.DynamicClient.Resource(mapping.Resource)
-			} else {
-				ns := obj.GetNamespace()
-				if ns == "" {
-					ns = "default"
-				}
-				dr = client.DynamicClient.Resource(mapping.Resource).Namespace(ns)
-			}
-
-			opts := metav1.PatchOptions{
-				FieldManager: "k8n",
-			}
-			if isDryRun {
-				opts.DryRun = []string{metav1.DryRunAll}
-			}
-
-			// In server-side apply, we must send Apply, but client-go dynamic client only has Patch
-			// so we use Patch with ApplyPatchType
-			data, err := obj.MarshalJSON()
-			if err != nil {
-				errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: "Failed to marshal: " + err.Error()})
-				continue
-			}
-
-			_, err = dr.Patch(context.Background(), obj.GetName(), types.ApplyPatchType, data, opts)
-			if err != nil {
-				errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: err.Error()})
-			}
-		}
-
 		if len(errorsList) > 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"success": false, "errors": errorsList})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"success": true})
+		c.JSON(http.StatusOK, gin.H{"success": true, "applied": applied})
 	}
 }
 
-// dynamicResourceInterface is a subset of dynamic.ResourceInterface to simplify testing/mocking if needed
-type dynamicResourceInterface interface {
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, options metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error)
+// ApplyManifests server-side applies a multi-document manifest, creating any
+// missing namespaces first. It returns the resources it handled plus any
+// per-resource failures. Shared by the REST handler and the MCP apply tool so
+// both enforce the same behaviour.
+func ApplyManifests(ctx context.Context, client *k8s.Client, manifest string, isDryRun bool) ([]string, []ErrorItem, error) {
+	objects, err := parseYAML(manifest)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+	if len(objects) == 0 {
+		return nil, nil, nil
+	}
+
+	gr, err := restmapper.GetAPIGroupResources(client.DiscoveryClient)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to discover API resources: %w", err)
+	}
+	mapper := restmapper.NewDiscoveryRESTMapper(gr)
+
+	// Create the namespaces the manifest targets, so applying a graph into a
+	// fresh namespace works in one step.
+	namespacesToCreate := make(map[string]bool)
+	for _, obj := range objects {
+		ns := obj.GetNamespace()
+		if ns != "" && ns != "default" && !IsProtected("", ns) {
+			namespacesToCreate[ns] = true
+		}
+	}
+	for ns := range namespacesToCreate {
+		opts := metav1.CreateOptions{}
+		if isDryRun {
+			opts.DryRun = []string{metav1.DryRunAll}
+		}
+		_, err := client.Clientset.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: ns},
+		}, opts)
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			return nil, nil, fmt.Errorf("failed to create namespace %s: %w", ns, err)
+		}
+	}
+
+	var applied []string
+	var errorsList []ErrorItem
+
+	for _, obj := range objects {
+		gvk := obj.GroupVersionKind()
+		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		if err != nil {
+			errorsList = append(errorsList, ErrorItem{
+				Resource: obj.GetName(),
+				Message:  "Unknown resource type " + gvk.String() + ": " + err.Error(),
+			})
+			continue
+		}
+
+		var dr dynamic.ResourceInterface = client.DynamicClient.Resource(mapping.Resource)
+		if mapping.Scope.Name() != meta.RESTScopeNameRoot {
+			ns := obj.GetNamespace()
+			if ns == "" {
+				ns = "default"
+			}
+			dr = client.DynamicClient.Resource(mapping.Resource).Namespace(ns)
+		}
+
+		opts := metav1.PatchOptions{FieldManager: "k8n"}
+		if isDryRun {
+			opts.DryRun = []string{metav1.DryRunAll}
+		}
+
+		// The dynamic client has no Apply, so server-side apply goes through
+		// Patch with ApplyPatchType.
+		data, err := obj.MarshalJSON()
+		if err != nil {
+			errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: "Failed to marshal: " + err.Error()})
+			continue
+		}
+
+		if _, err = dr.Patch(ctx, obj.GetName(), types.ApplyPatchType, data, opts); err != nil {
+			errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: err.Error()})
+			continue
+		}
+
+		applied = append(applied, fmt.Sprintf("%s/%s", obj.GetKind(), obj.GetName()))
+	}
+
+	return applied, errorsList, nil
 }

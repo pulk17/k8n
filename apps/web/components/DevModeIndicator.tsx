@@ -26,7 +26,7 @@ export default function DevModeIndicator() {
           setDbStatus('unknown');
           setK8sStatus('unknown');
         }
-      } catch (err) {
+      } catch {
         setApiStatus('disconnected');
         setDbStatus('unknown');
         setK8sStatus('unknown');

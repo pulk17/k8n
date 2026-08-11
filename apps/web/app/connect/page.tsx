@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Server, CheckCircle2, AlertCircle } from "lucide-react";
-import { fetchContexts, connectToContext } from "../../lib/api";
+import { connectToContext, errorMessage, fetchContexts } from "../../lib/api";
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function ConnectPage() {
           setSelectedContext(data[0]);
         }
       })
-      .catch((err) => setError(err.message))
+      .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -33,8 +33,8 @@ export default function ConnectPage() {
     try {
       await connectToContext(selectedContext);
       router.push("/canvas");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errorMessage(err));
       setConnecting(false);
     }
   };
@@ -140,10 +140,10 @@ export default function ConnectPage() {
         {/* Footer */}
         <div className="text-center mt-4">
           <p className="text-xs text-gray-400">
-            Powered by React Flow • Kubernetes • Go
+            React Flow, Kubernetes and Go
           </p>
           <a href="/canvas" className="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
-            ← Back to Canvas
+            Back to Canvas
           </a>
         </div>
       </div>

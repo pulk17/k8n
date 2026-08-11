@@ -1,169 +1,182 @@
 import { Edge } from "reactflow";
 import { K8sResource } from "./api";
-import { CONNECTION_TYPES, VALID_CONNECTIONS } from "./constants";
+import { getConnectionType, isAnimatedType, ConnectionType } from "./connections";
 
-function isMatch(selector: Record<string, string>, labels: Record<string, string>) {
+// Re-exported so existing imports keep working; the definitions now live in
+// connections.ts, which is the single source of truth for the graph's rules.
+export { isValidConnection, getConnectionType, validTargetsFor } from "./connections";
+export { CONNECTION_TYPES as connectionTypes } from "./constants";
+
+/** Label-selector match: every selector key must equal the label's value. */
+function selectorMatches(
+  selector: Record<string, string> | undefined,
+  labels: Record<string, string> | undefined
+): boolean {
   if (!selector || Object.keys(selector).length === 0) return false;
   if (!labels) return false;
-  for (const [k, v] of Object.entries(selector)) {
-    if (labels[k] !== v) return false;
-  }
-  return true;
+  return Object.entries(selector).every(([k, v]) => labels[k] === v);
 }
 
-// Connection type definitions with colors (re-exported from constants for convenience)
-export const connectionTypes = CONNECTION_TYPES;
-
-// Validate if a connection is allowed between two resource types
-export function isValidConnection(sourceKind: string, targetKind: string): boolean {
-  return VALID_CONNECTIONS[sourceKind]?.includes(targetKind) || false;
+interface EdgeOptions {
+  dashed?: boolean;
+  thin?: boolean;
 }
 
-// Get connection type and color based on source and target kinds
-export function getConnectionType(sourceKind: string, targetKind: string): { type: string; color: string } {
-  if (sourceKind === 'Service') return { type: 'network', color: connectionTypes.network.color };
-  if (sourceKind === 'Ingress') return { type: 'routing', color: connectionTypes.routing.color };
-  if (sourceKind === 'ConfigMap' || sourceKind === 'Secret') return { type: 'config', color: connectionTypes.config.color };
-  if (sourceKind === 'PersistentVolumeClaim' || sourceKind === 'PersistentVolume') return { type: 'storage', color: connectionTypes.storage.color };
-  if (sourceKind === 'HorizontalPodAutoscaler' || sourceKind === 'VerticalPodAutoscaler') return { type: 'scaling', color: connectionTypes.scaling.color };
-  if (sourceKind === 'NetworkPolicy' || sourceKind === 'ServiceAccount' || sourceKind === 'Role' || sourceKind === 'ClusterRole') {
-    return { type: 'security', color: connectionTypes.security.color };
-  }
-  return { type: 'ownership', color: connectionTypes.ownership.color };
+function makeEdge(
+  source: K8sResource,
+  target: K8sResource,
+  opts: EdgeOptions = {}
+): Edge {
+  const { type, color } = getConnectionType(source.kind, target.kind);
+  const style: Record<string, string | number> = {
+    stroke: color,
+    strokeWidth: opts.thin ? 1 : 2,
+  };
+  if (opts.dashed) style.strokeDasharray = "5,5";
+  if (opts.thin) style.opacity = 0.5;
+
+  return {
+    id: `edge-${source.uid}-${target.uid}-${type}`,
+    source: source.uid,
+    target: target.uid,
+    type: "default",
+    animated: isAnimatedType(type as ConnectionType),
+    style,
+    data: { edgeType: type },
+  };
 }
 
+/**
+ * Derives edges from what the cluster actually reports.
+ *
+ * Previously most of this was a namespace cross-product — every Ingress was
+ * joined to every Service, every PVC and HPA to every workload, and ConfigMaps
+ * were matched by fuzzy string comparison on names. Now each relationship comes
+ * from a real reference on the live object (ingress backends, scaleTargetRef,
+ * volume claims, envFrom/volume references), so the graph reflects the cluster
+ * rather than approximating it.
+ */
 export function generateEdges(resources: K8sResource[]): Edge[] {
   const edges: Edge[] = [];
-  
-  const services = resources.filter(r => r.kind === "Service");
-  const ingresses = resources.filter(r => r.kind === "Ingress");
-  const deployments = resources.filter(r => r.kind === "Deployment");
-  const statefulSets = resources.filter(r => r.kind === "StatefulSet");
-  const replicaSets = resources.filter(r => r.kind === "ReplicaSet");
-  const pods = resources.filter(r => r.kind === "Pod");
-  const configMaps = resources.filter(r => r.kind === "ConfigMap");
-  const secrets = resources.filter(r => r.kind === "Secret");
-  const pvcs = resources.filter(r => r.kind === "PersistentVolumeClaim");
-  const hpas = resources.filter(r => r.kind === "HorizontalPodAutoscaler");
+  const seen = new Set<string>();
 
-  // 1. Service -> Deployment/StatefulSet/Pod
-  services.forEach(svc => {
-    [...deployments, ...statefulSets].forEach(workload => {
-      if (svc.namespace === workload.namespace && isMatch(svc.selector || {}, workload.labels)) {
-        const connType = getConnectionType('Service', workload.kind);
-        edges.push({
-          id: `edge-${svc.uid}-${workload.uid}`,
-          source: svc.uid,
-          target: workload.uid,
-          type: "default",
-          animated: true,
-          style: { stroke: connType.color, strokeWidth: 2 },
-          data: { edgeType: connType.type }
-        });
+  const push = (edge: Edge) => {
+    if (seen.has(edge.id)) return;
+    seen.add(edge.id);
+    edges.push(edge);
+  };
+
+  const byKind = (kind: string) => resources.filter(r => r.kind === kind);
+
+  const services = byKind("Service");
+  const ingresses = byKind("Ingress");
+  const deployments = byKind("Deployment");
+  const statefulSets = byKind("StatefulSet");
+  const daemonSets = byKind("DaemonSet");
+  const replicaSets = byKind("ReplicaSet");
+  const pods = byKind("Pod");
+  const configMaps = byKind("ConfigMap");
+  const secrets = byKind("Secret");
+  const pvcs = byKind("PersistentVolumeClaim");
+  const hpas = byKind("HorizontalPodAutoscaler");
+  const serviceAccounts = byKind("ServiceAccount");
+
+  const podded = [...deployments, ...statefulSets, ...daemonSets, ...replicaSets, ...pods];
+
+  // Index by namespace+name so reference lookups are direct.
+  const index = new Map<string, K8sResource>();
+  for (const r of resources) {
+    index.set(`${r.kind}/${r.namespace}/${r.name}`, r);
+  }
+  const lookup = (kind: string, namespace: string, name: string) =>
+    index.get(`${kind}/${namespace}/${name}`);
+
+  // 1. Service → workload, by label selector.
+  for (const svc of services) {
+    for (const workload of podded) {
+      if (svc.namespace !== workload.namespace) continue;
+      if (selectorMatches(svc.selector, workload.labels)) {
+        push(makeEdge(svc, workload));
       }
-    });
-  });
+    }
+  }
 
-  // 2. Ingress -> Service
-  ingresses.forEach(ing => {
-    services.forEach(svc => {
-      if (ing.namespace === svc.namespace) {
-        const connType = getConnectionType('Ingress', 'Service');
-        edges.push({
-          id: `edge-${ing.uid}-${svc.uid}`,
-          source: ing.uid,
-          target: svc.uid,
-          type: "default",
-          animated: true,
-          style: { stroke: connType.color, strokeWidth: 2 },
-          data: { edgeType: connType.type }
-        });
+  // 2. Ingress → Service, from the ingress's actual backends.
+  for (const ing of ingresses) {
+    for (const backend of ing.backends || []) {
+      const svc = lookup("Service", ing.namespace, backend);
+      if (svc) push(makeEdge(ing, svc));
+    }
+  }
+
+  // 3. ConfigMap/Secret → workload, from envFrom / env / volume references.
+  for (const workload of podded) {
+    for (const name of workload.configMapRefs || []) {
+      const cm = lookup("ConfigMap", workload.namespace, name);
+      if (cm) push(makeEdge(cm, workload, { dashed: true }));
+    }
+    for (const name of workload.secretRefs || []) {
+      const secret = lookup("Secret", workload.namespace, name);
+      if (secret) push(makeEdge(secret, workload, { dashed: true }));
+    }
+  }
+
+  // 4. PVC → workload, from the volumes the workload actually claims.
+  for (const workload of podded) {
+    for (const name of workload.pvcRefs || []) {
+      const pvc = lookup("PersistentVolumeClaim", workload.namespace, name);
+      if (pvc) push(makeEdge(pvc, workload, { dashed: true }));
+    }
+  }
+
+  // 5. HPA → workload, from scaleTargetRef.
+  for (const hpa of hpas) {
+    if (!hpa.scaleTargetKind || !hpa.scaleTargetName) continue;
+    const target = lookup(hpa.scaleTargetKind, hpa.namespace, hpa.scaleTargetName);
+    if (target) push(makeEdge(hpa, target, { dashed: true }));
+  }
+
+  // 6. ServiceAccount → workload, from serviceAccountName.
+  for (const workload of podded) {
+    const sa = workload.serviceAccountName;
+    // "default" is on nearly every pod and would bury the graph in edges.
+    if (!sa || sa === "default") continue;
+    const account = lookup("ServiceAccount", workload.namespace, sa);
+    if (account) push(makeEdge(account, workload, { dashed: true }));
+  }
+
+  // 7. Ownership: Deployment → ReplicaSet → Pod.
+  for (const dep of deployments) {
+    const owned = replicaSets.filter(
+      rs => rs.namespace === dep.namespace && rs.ownerReferences?.includes(dep.name)
+    );
+    for (const rs of owned) {
+      push(makeEdge(dep, rs, { thin: true }));
+      const ownedPods = pods.filter(
+        p => p.namespace === rs.namespace && p.ownerReferences?.includes(rs.name)
+      );
+      for (const pod of ownedPods) {
+        push(makeEdge(rs, pod, { thin: true }));
       }
-    });
-  });
+    }
+  }
 
-  // 3. ConfigMap/Secret -> Workloads (only connect when names suggest a relationship)
-  // Avoids O(n²) by requiring name-based matching instead of connecting everything
-  [...configMaps, ...secrets].forEach(config => {
-    [...deployments, ...statefulSets].forEach(workload => {
-      if (config.namespace !== workload.namespace) return;
-      
-      // Only connect if the config name contains the workload name or vice versa
-      const configBase = config.name.replace(/-config$|-secret$|-cm$|-configmap$/, '');
-      const workloadBase = workload.name.replace(/-deployment$|-sts$/, '');
-      const isRelated = config.name.includes(workloadBase) || 
-                        workload.name.includes(configBase) ||
-                        configBase === workloadBase;
-      
-      if (isRelated) {
-        const connType = getConnectionType(config.kind, workload.kind);
-        edges.push({
-          id: `edge-${config.uid}-${workload.uid}`,
-          source: config.uid,
-          target: workload.uid,
-          type: "default",
-          animated: false,
-          style: { stroke: connType.color, strokeWidth: 2, strokeDasharray: '5,5' },
-          data: { edgeType: connType.type }
-        });
-      }
-    });
-  });
+  // 8. Ownership for controllers that own pods directly.
+  for (const controller of [...statefulSets, ...daemonSets]) {
+    const ownedPods = pods.filter(
+      p => p.namespace === controller.namespace && p.ownerReferences?.includes(controller.name)
+    );
+    for (const pod of ownedPods) {
+      push(makeEdge(controller, pod, { thin: true }));
+    }
+  }
 
-  // 4. PVC -> Workloads
-  pvcs.forEach(pvc => {
-    [...deployments, ...statefulSets, ...pods].forEach(workload => {
-      if (pvc.namespace === workload.namespace) {
-        const connType = getConnectionType('PersistentVolumeClaim', workload.kind);
-        edges.push({
-          id: `edge-${pvc.uid}-${workload.uid}`,
-          source: pvc.uid,
-          target: workload.uid,
-          type: "default",
-          animated: false,
-          style: { stroke: connType.color, strokeWidth: 2, strokeDasharray: '5,5' },
-          data: { edgeType: connType.type }
-        });
-      }
-    });
-  });
-
-  // 5. HPA -> Deployment/StatefulSet
-  hpas.forEach(hpa => {
-    [...deployments, ...statefulSets, ...replicaSets].forEach(workload => {
-      if (hpa.namespace === workload.namespace) {
-        const connType = getConnectionType('HorizontalPodAutoscaler', workload.kind);
-        edges.push({
-          id: `edge-${hpa.uid}-${workload.uid}`,
-          source: hpa.uid,
-          target: workload.uid,
-          type: "default",
-          animated: false,
-          style: { stroke: connType.color, strokeWidth: 2, strokeDasharray: '3,3' },
-          data: { edgeType: connType.type }
-        });
-      }
-    });
-  });
-
-  // 6. Deployment -> ReplicaSet -> Pod (ownership chain)
-  deployments.forEach(dep => {
-     const ownedRs = replicaSets.filter(rs => rs.ownerReferences?.includes(dep.name) && rs.namespace === dep.namespace);
-     ownedRs.forEach(rs => {
-         const ownedPods = pods.filter(pod => pod.ownerReferences?.includes(rs.name) && pod.namespace === rs.namespace);
-         ownedPods.forEach(pod => {
-             edges.push({
-               id: `edge-${dep.uid}-${pod.uid}`,
-               source: dep.uid,
-               target: pod.uid,
-               type: "default",
-               animated: false,
-               style: { stroke: connectionTypes.ownership.color, strokeWidth: 1, opacity: 0.5 },
-               data: { edgeType: 'ownership' }
-             });
-         });
-     });
-  });
+  // 9. Unresolved config: ConfigMaps and Secrets nothing references are still
+  //    worth showing, but they get no invented edges.
+  void configMaps;
+  void secrets;
+  void pvcs;
+  void serviceAccounts;
 
   return edges;
 }

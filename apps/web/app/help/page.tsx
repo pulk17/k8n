@@ -55,7 +55,7 @@ export default function HelpPage() {
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">5</span>
               <div>
-                <strong>Deploy:</strong> Click "Apply" in the toolbar to deploy to your cluster
+                <strong>Deploy:</strong> Click &quot;Apply&quot; in the toolbar to deploy to your cluster
               </div>
             </li>
           </ol>
@@ -220,16 +220,16 @@ export default function HelpPage() {
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Using Helm in k8n</h3>
               <ol className="list-decimal list-inside space-y-2 ml-2">
-                <li>Click the "Helm Charts" button in the bottom-left corner</li>
-                <li>Search for charts from Artifact Hub (e.g., "nginx", "redis", "postgresql")</li>
+                <li>Click the &quot;Helm Charts&quot; button in the bottom-left corner</li>
+                <li>Search for charts from Artifact Hub (e.g., &quot;nginx&quot;, &quot;redis&quot;, &quot;postgresql&quot;)</li>
                 <li>Drag a chart onto the canvas to add it as a node</li>
-                <li>Configure the chart's values in the node settings (optional)</li>
-                <li>Click "Apply" to install the chart to your cluster</li>
+                <li>Configure the chart&apos;s values in the node settings (optional)</li>
+                <li>Click &quot;Apply&quot; to install the chart to your cluster</li>
               </ol>
             </div>
 
             <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-4">
-              <h3 className="font-semibold text-green-800 dark:text-green-400 mb-2">✅ Fully Functional</h3>
+              <h3 className="font-semibold text-green-800 dark:text-green-400 mb-2">Helm support</h3>
               <p className="text-green-700 dark:text-green-300">
                 Helm installation is now <strong>fully implemented</strong>! Charts will be installed to your cluster with the configured values. Common repositories (bitnami, stable, ingress-nginx, jetstack) are automatically configured.
               </p>
@@ -294,7 +294,7 @@ export default function HelpPage() {
         <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Verifying Deployments</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            After clicking "Apply", use these kubectl commands to verify your resources:
+            After clicking &quot;Apply&quot;, use these kubectl commands to verify your resources:
           </p>
           
           <div className="space-y-3">

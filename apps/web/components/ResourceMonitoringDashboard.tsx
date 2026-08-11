@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Activity, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { API_URL } from '../lib/api';
+import { errorMessage, fetchResourceMetrics } from '../lib/api';
 
 interface MetricsData {
   timestamp: number;
@@ -21,71 +21,28 @@ export default function ResourceMonitoringDashboard({ resourceName, resourceKind
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [metricsServerAvailable, setMetricsServerAvailable] = useState<boolean | null>(null);
 
-  const checkMetricsServer = async () => {
+  const refresh = useCallback(async () => {
     try {
-      const response = await fetch(
-        `${API_URL}/api/metrics/check`
+      const data = await fetchResourceMetrics(namespace, resourceKind, resourceName);
+      // Keep a short rolling window; this is a live view, not a history.
+      setMetrics(prev =>
+        [...prev, { timestamp: Date.now(), cpu: data.cpu || 0, memory: data.memory || 0 }].slice(-20)
       );
-      const data = await response.json();
-      setMetricsServerAvailable(data.available);
-      if (!data.available) {
-        setError(data.hint || 'Metrics-server is not available');
-      }
-    } catch (err) {
-      setMetricsServerAvailable(false);
-      setError('Failed to check metrics-server availability');
-    }
-  };
-
-  const fetchMetrics = async () => {
-    try {
-      const response = await fetch(
-        `${API_URL}/api/metrics/${namespace}/${resourceKind}/${resourceName}`
-      );
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.error || errorData.hint || 'Failed to fetch metrics';
-        
-        // Don't throw for "No metrics found" - just set error state
-        setError(errorMessage);
-        setLoading(false);
-        return;
-      }
-
-      const data = await response.json();
-      
-      setMetrics(prev => {
-        const newMetrics = [...prev, {
-          timestamp: Date.now(),
-          cpu: data.cpu || 0,
-          memory: data.memory || 0,
-        }];
-        
-        // Keep only last 20 data points
-        return newMetrics.slice(-20);
-      });
-      
       setError(null);
-    } catch (err: any) {
-      console.error('Metrics fetch error:', err);
-      setError(err.message || 'Failed to fetch metrics');
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, [namespace, resourceKind, resourceName]);
 
   useEffect(() => {
-    checkMetricsServer();
-    fetchMetrics();
-    
-    if (autoRefresh) {
-      const interval = setInterval(fetchMetrics, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [autoRefresh, resourceName, namespace]);
+    refresh();
+    if (!autoRefresh) return;
+    const interval = setInterval(refresh, 5000);
+    return () => clearInterval(interval);
+  }, [refresh, autoRefresh]);
 
   const getTrend = (current: number, previous: number) => {
     if (current > previous) return 'up';
@@ -133,7 +90,7 @@ export default function ResourceMonitoringDashboard({ resourceName, resourceKind
 
       {error && (
         <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded text-sm text-yellow-700 dark:text-yellow-400">
-          <div className="font-semibold mb-1">⚠️ {error}</div>
+          <div className="font-semibold mb-1">{error}</div>
           <div className="text-xs mt-2 space-y-1">
             <div>Common causes:</div>
             <ul className="list-disc list-inside ml-2">
@@ -159,7 +116,7 @@ export default function ResourceMonitoringDashboard({ resourceName, resourceKind
             {getTrendIcon(cpuTrend)}
           </div>
           <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-            {currentMetrics ? `${currentMetrics.cpu.toFixed(1)}%` : '--'}
+            {currentMetrics ? `${currentMetrics.cpu.toFixed(0)}m` : '--'}
           </div>
         </div>
 
@@ -185,13 +142,13 @@ export default function ResourceMonitoringDashboard({ resourceName, resourceKind
                 key={idx}
                 className="flex-1 bg-blue-500 dark:bg-blue-600 rounded-t transition-all hover:bg-blue-600 dark:hover:bg-blue-500"
                 style={{ height: `${(metric.cpu / maxCpu) * 100}%`, minHeight: '2px' }}
-                title={`${metric.cpu.toFixed(1)}% at ${new Date(metric.timestamp).toLocaleTimeString()}`}
+                title={`${metric.cpu.toFixed(0)}m at ${new Date(metric.timestamp).toLocaleTimeString()}`}
               />
             ))}
           </div>
           <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-1">
-            <span>0%</span>
-            <span>{maxCpu.toFixed(0)}%</span>
+            <span>0m</span>
+            <span>{maxCpu.toFixed(0)}m</span>
           </div>
         </div>
 
