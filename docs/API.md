@@ -108,6 +108,28 @@ Kind-specific fields are present only where they apply: `selector`, `ports`,
 Results are sorted by kind, namespace and name so the list does not reshuffle
 between refreshes.
 
+### `GET /api/cluster/watch?namespace=<ns>`
+
+The same resources, as a Server-Sent Events stream. This is what the deployed
+view and imported canvas nodes run on, so a rollout shows up without anyone
+pressing refresh.
+
+The first event carries everything; after that only what changed, keyed by UID:
+
+```
+data: {"type":"update","changed":[ …Resource… ],"removed":["uid-of-a-gone-resource"]}
+```
+
+A settled cluster sends nothing at all, bar a `: ping` comment every 20s to hold
+the connection open. `{"type":"error","message":"…"}` arrives if listing fails
+or the cluster connection goes away, and the stream then ends.
+
+The server re-lists every 3s, so one open page costs one poll however many
+resources it draws. Responses carry `Cache-Control: no-cache, no-transform`:
+without `no-transform` a proxy that gzips — the Next dev server does — buffers
+the stream, and the client is left holding an open connection that never says
+anything.
+
 ### `GET /api/cluster/crds`
 
 The CustomResourceDefinitions installed in the cluster, so the toolbox can offer

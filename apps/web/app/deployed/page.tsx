@@ -20,7 +20,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { deleteResource, fetchResources, K8sResource } from "../../lib/api";
+import { deleteResource, K8sResource, watchResources } from "../../lib/api";
 import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS, STATUS_STYLES } from "../../lib/constants";
 import { confirmAction, notify, notifyError } from "../../lib/dialog";
 import ApiConnectionError from "../../components/ApiConnectionError";
@@ -95,21 +95,29 @@ export default function DeployedPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [monitoring, setMonitoring] = useState<K8sResource | null>(null);
 
-  const load = useCallback(async () => {
+  // Bumping this drops the stream and opens a new one.
+  const [attempt, setAttempt] = useState(0);
+  const reconnect = useCallback(() => setAttempt((n) => n + 1), []);
+
+  // Everything comes off the watch stream, so a rollout shows up on its own.
+  // It carries all namespaces because the namespace dropdown below is built
+  // from whatever came back.
+  useEffect(() => {
     setLoading(true);
     setError(null);
-    try {
-      setResources(await fetchResources());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch resources");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+    return watchResources(
+      undefined,
+      (next) => {
+        setResources(next);
+        setLoading(false);
+        setError(null);
+      },
+      (message) => {
+        setError(message);
+        setLoading(false);
+      }
+    );
+  }, [attempt]);
 
   const namespaces = Array.from(new Set(resources.map((r) => r.namespace).filter(Boolean))).sort();
   const visible = resources
@@ -134,7 +142,6 @@ export default function DeployedPage() {
     try {
       await deleteResource(r.kind, r.name, r.namespace);
       notify(`Deleted ${r.kind}/${r.name}`, "success");
-      await load();
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Failed to delete resource");
     } finally {
@@ -165,11 +172,10 @@ export default function DeployedPage() {
 
     if (failed) notifyError(`Deleted ${targets.length - failed}, failed ${failed}.`);
     else notify(`Deleted ${targets.length} resources.`, "success");
-    await load();
   };
 
   if (error?.includes("Cannot connect")) {
-    return <ApiConnectionError error={error} onRetry={load} />;
+    return <ApiConnectionError error={error} onRetry={reconnect} />;
   }
 
   return (
@@ -191,14 +197,23 @@ export default function DeployedPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={load}
-              disabled={loading}
-              className="flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
+            {error ? (
+              <button
+                onClick={reconnect}
+                className="flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reconnect
+              </button>
+            ) : (
+              <span
+                className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+                title="Updates arrive as the cluster changes"
+              >
+                <span className="h-2 w-2 rounded-full bg-green-500" />
+                Live
+              </span>
+            )}
             <button
               onClick={removeAll}
               disabled={busy === "all" || visible.length === 0}

@@ -26,7 +26,7 @@ import DevModeIndicator from "../../components/DevModeIndicator";
 import PodMetricsPanel from "../../components/PodMetricsPanel";
 import ApiConnectionError from "../../components/ApiConnectionError";
 import { AlertCircle, CheckCircle2, Eye, FolderOpen, HelpCircle, Loader2, Play, RefreshCw, Save, X, FileCode } from "lucide-react";
-import { ApiError, CompileResult, applyYaml, compileGraph, errorMessage, installHelmChart } from "../../lib/api";
+import { ApiError, CompileResult, applyYaml, compileGraph, errorMessage, installHelmChart, watchResources } from "../../lib/api";
 import { isValidConnection, validTargetsFor } from "../../lib/connections";
 import { defaultsForKind } from "../../lib/nodeSchema";
 import { makeNode, nodeId } from "../../lib/graph";
@@ -108,6 +108,20 @@ function CanvasPageContent() {
   useEffect(() => {
     loadNamespaces();
   }, [loadNamespaces]);
+
+  // Imported nodes track the cluster, so their status dots move on their own.
+  // A hand-drawn graph has nothing live to follow, so it opens no stream.
+  const trackingCluster = nodes.some((n) => n.data?.origin === "cluster");
+  useEffect(() => {
+    if (!trackingCluster) return;
+    return watchResources(
+      undefined,
+      (resources) => useCanvasStore.getState().applyLiveStatus(resources),
+      // Losing the stream leaves the last known status on screen; the canvas
+      // itself keeps working, so there is nothing worth interrupting for.
+      () => {}
+    );
+  }, [trackingCluster]);
 
   // Runs once per session: either open the requested workflow, or offer the
   // manager so the canvas is never just an empty grid on a first visit.

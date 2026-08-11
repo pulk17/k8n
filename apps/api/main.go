@@ -103,6 +103,7 @@ func main() {
 	r.GET("/api/cluster/contexts", handlers.ListContexts())
 	r.POST("/api/cluster/connect", handlers.Connect(setK8sClient))
 	r.GET("/api/cluster/resources", handlers.GetClusterResources(getK8sClient))
+	r.GET("/api/cluster/watch", handlers.WatchResources(getK8sClient))
 	r.GET("/api/cluster/namespaces", handlers.GetNamespaces(getK8sClient))
 	r.GET("/api/cluster/crds", handlers.GetCRDs(getK8sClient))
 	r.GET("/api/schema/:kind", handlers.GetSchema(getK8sClient))

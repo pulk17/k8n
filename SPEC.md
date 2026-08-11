@@ -257,9 +257,18 @@ becomes: preview → dry-run → diff → confirm → apply. This is the direct
 mitigation for §1.6.
 
 ### 3.5 Live status
-Replace refresh-button polling with a `/api/cluster/watch` SSE stream driven by
-client-go informers; node status dots update in place. (This is what the orphan
-websocket upgrader was reaching for; SSE is the simpler fit for one-way status.)
+Replace refresh-button polling with a `/api/cluster/watch` SSE stream; node
+status dots update in place. (This is what the orphan websocket upgrader was
+reaching for; SSE is the simpler fit for one-way status.)
+
+**Done**, though not with the client-go informers first sketched here. The
+stream polls `CollectResources` on the server every 3s and sends only what
+changed, keyed by UID. Informers would push faster and cost the API server
+less, but they would need a shared factory torn down and rebuilt whenever the
+Connect page swaps the cluster, plus a second path from live object to
+`Resource` alongside the one `CollectResources` already has. Polling reuses
+that path exactly, so the list and the stream cannot disagree. Worth revisiting
+if k8n is ever pointed at a cluster big enough for the LIST calls to hurt.
 
 ### 3.6 General
 - Unified toast system; `alert()`/`confirm()` in `deployed/page.tsx` replaced
@@ -441,11 +450,12 @@ Beyond the list above:
 
 ### Not done
 
-- **Live status over SSE (§3.5).** Deployed resources still refresh on demand.
-- **Live-cluster verification.** There is no kubeconfig and no container runtime
-  on this machine, so every cluster-touching path — apply, delete, logs,
-  diagnose, metrics — is verified by construction and against the API's own
-  types, not against a running cluster. Bring up kind or minikube to exercise it.
+- **Live-cluster verification.** There is no container runtime on this machine,
+  so the write paths — apply, delete, logs, diagnose, metrics — are verified by
+  construction and against the API's own types, not against a running cluster.
+  The read path behind `/api/cluster/watch` has been driven end to end against
+  a stub API server, which is not the same as a real one. Bring up kind or
+  minikube to exercise the rest.
 
 ### How it was verified
 

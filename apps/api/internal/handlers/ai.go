@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -68,22 +67,8 @@ func AIChat(clientGetter ClientGetter) gin.HandlerFunc {
 			return
 		}
 
-		// SSE preamble.
-		c.Writer.Header().Set("Content-Type", "text/event-stream")
-		c.Writer.Header().Set("Cache-Control", "no-cache")
-		c.Writer.Header().Set("Connection", "keep-alive")
-		c.Writer.Header().Set("X-Accel-Buffering", "no")
-		c.Writer.WriteHeader(http.StatusOK)
-		c.Writer.Flush()
-
-		emit := func(ev ai.Event) {
-			data, err := json.Marshal(ev)
-			if err != nil {
-				return
-			}
-			fmt.Fprintf(c.Writer, "data: %s\n\n", data)
-			c.Writer.Flush()
-		}
+		sseHeaders(c)
+		emit := func(ev ai.Event) { sseSend(c, ev) }
 
 		history := make([]*genai.Content, 0, len(req.History)+1)
 		for _, turn := range req.History {

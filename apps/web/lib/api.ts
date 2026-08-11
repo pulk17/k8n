@@ -173,6 +173,65 @@ export const fetchResources = (namespace?: string) =>
     `/api/cluster/resources${namespace && namespace !== "all" ? `?namespace=${encodeURIComponent(namespace)}` : ""}`
   ).then(r => r ?? []);
 
+/**
+ * Live cluster state. Calls back with the full list every time something moves,
+ * and returns a function that closes the stream.
+ *
+ * The server sends a snapshot first and only changes after that; the merging
+ * happens here so callers never have to think about it.
+ */
+export function watchResources(
+  namespace: string | undefined,
+  onChange: (resources: K8sResource[]) => void,
+  onError: (message: string) => void
+): () => void {
+  const query =
+    namespace && namespace !== "all" ? `?namespace=${encodeURIComponent(namespace)}` : "";
+  const source = new EventSource(`${API_URL}/api/cluster/watch${query}`);
+  const byUid = new Map<string, K8sResource>();
+
+  source.onmessage = event => {
+    const message = JSON.parse(event.data) as {
+      type: string;
+      changed?: K8sResource[];
+      removed?: string[];
+      message?: string;
+    };
+
+    if (message.type === "error") {
+      onError(message.message || "The cluster stream failed.");
+      return;
+    }
+
+    for (const resource of message.changed || []) byUid.set(resource.uid, resource);
+    for (const uid of message.removed || []) byUid.delete(uid);
+
+    // The server sorts its snapshot; re-sort here because merging by uid does
+    // not preserve that, and rows must not jump around between updates.
+    onChange(
+      [...byUid.values()].sort(
+        (a, b) =>
+          a.kind.localeCompare(b.kind) ||
+          a.namespace.localeCompare(b.namespace) ||
+          a.name.localeCompare(b.name)
+      )
+    );
+  };
+
+  // EventSource retries by itself after a dropped connection, but gives up when
+  // the response was never a stream — no cluster connected, backend down. It
+  // also never exposes that response, so the actual reason has to be asked for
+  // separately; otherwise "no cluster connected" reads as a network blip.
+  source.onerror = () => {
+    if (source.readyState !== EventSource.CLOSED) return;
+    fetchResources(namespace)
+      .then(() => onError("Lost the connection to the cluster."))
+      .catch(err => onError(errorMessage(err)));
+  };
+
+  return () => source.close();
+}
+
 export const fetchNamespaces = () =>
   request<string[]>("/api/cluster/namespaces").then(r => r ?? []);
 

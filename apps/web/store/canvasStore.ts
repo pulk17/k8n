@@ -51,6 +51,8 @@ export interface CanvasState {
   setShowPods: (show: boolean) => void;
   setShowSystemNamespaces: (show: boolean) => void;
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
+  /** Refreshes the status of imported nodes from the watch stream, in place. */
+  applyLiveStatus: (resources: K8sResource[]) => void;
   addNode: (node: Node) => void;
   deleteNode: (nodeId: string) => void;
   /** Returns where it landed, so the UI can say so. */
@@ -239,6 +241,35 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }),
       dirty: true,
     });
+  },
+
+  applyLiveStatus: resources => {
+    const byUid = new Map(resources.map(r => [r.uid, r]));
+    let moved = false;
+
+    const nodes = get().nodes.map(node => {
+      if (node.data?.origin !== "cluster") return node;
+
+      const live = byUid.get(node.id);
+      const status = live ? live.status : "Deleted";
+      const statusMessage = live ? live.statusMessage : "No longer in the cluster";
+      const readyReplicas = live ? live.readyReplicas : node.data.readyReplicas;
+
+      if (
+        node.data.status === status &&
+        node.data.statusMessage === statusMessage &&
+        node.data.readyReplicas === readyReplicas
+      ) {
+        return node;
+      }
+
+      moved = true;
+      return { ...node, data: { ...node.data, status, statusMessage, readyReplicas } };
+    });
+
+    // Status is not the user's work, so it neither dirties the canvas nor lands
+    // in the undo history — and an unchanged cluster must not re-render it.
+    if (moved) set({ nodes });
   },
 
   addNode: node => {
