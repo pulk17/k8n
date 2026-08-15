@@ -235,6 +235,58 @@ export function watchResources(
 export const fetchNamespaces = () =>
   request<string[]>("/api/cluster/namespaces").then(r => r ?? []);
 
+/** A pod's recent log output. `previous` reads the crashed container instead. */
+export const fetchPodLogs = (
+  namespace: string,
+  pod: string,
+  opts: { tailLines?: number; previous?: boolean; container?: string } = {}
+) => {
+  const query = new URLSearchParams({ tailLines: String(opts.tailLines ?? 200) });
+  if (opts.previous) query.set("previous", "true");
+  if (opts.container) query.set("container", opts.container);
+  return request<{ pod: string; namespace: string; container: string; logs: string }>(
+    `/api/logs/${encodeURIComponent(namespace)}/${encodeURIComponent(pod)}?${query}`
+  );
+};
+
+export interface ClusterEvent {
+  type: string;
+  reason: string;
+  message: string;
+  object: string;
+  count: number;
+  firstSeen?: string;
+  lastSeen?: string;
+}
+
+/** Events for a namespace, or for one object and whatever it owns. */
+export const fetchEvents = (namespace: string, object?: string) => {
+  const query = new URLSearchParams({ limit: "50" });
+  if (object) query.set("object", object);
+  return request<ClusterEvent[]>(
+    `/api/events/${encodeURIComponent(namespace)}?${query}`
+  ).then(r => r ?? []);
+};
+
+export interface Finding {
+  severity: "critical" | "warning" | "info";
+  kind: string;
+  name: string;
+  reason: string;
+  detail: string;
+  hint?: string;
+}
+
+export interface DiagnosisReport {
+  namespace: string;
+  findings: Finding[];
+  checked: number;
+}
+
+/** Deterministic health checks. This needs no AI key. */
+export const fetchDiagnosis = (namespace: string) =>
+  request<DiagnosisReport>(`/api/diagnose/${encodeURIComponent(namespace)}`);
+
 export const fetchCRDs = () =>
   request<{ kind: string; name: string; group: string; version: string }[]>(
     "/api/cluster/crds"

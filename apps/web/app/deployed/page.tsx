@@ -18,12 +18,22 @@ import {
   Lock,
   Network,
   RefreshCw,
+  ScrollText,
+  Stethoscope,
   Trash2,
 } from "lucide-react";
-import { deleteResource, K8sResource, watchResources } from "../../lib/api";
+import {
+  DiagnosisReport,
+  deleteResource,
+  errorMessage,
+  fetchDiagnosis,
+  K8sResource,
+  watchResources,
+} from "../../lib/api";
 import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS, STATUS_STYLES } from "../../lib/constants";
 import { confirmAction, notify, notifyError } from "../../lib/dialog";
 import ApiConnectionError from "../../components/ApiConnectionError";
+import InspectPanel from "../../components/InspectPanel";
 import ResourceMonitoringDashboard from "../../components/ResourceMonitoringDashboard";
 
 const KIND_ICONS: Record<string, typeof Box> = {
@@ -94,6 +104,9 @@ export default function DeployedPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [monitoring, setMonitoring] = useState<K8sResource | null>(null);
+  const [inspecting, setInspecting] = useState<K8sResource | null>(null);
+  const [diagnosis, setDiagnosis] = useState<DiagnosisReport | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
 
   // Bumping this drops the stream and opens a new one.
   const [attempt, setAttempt] = useState(0);
@@ -128,6 +141,27 @@ export default function DeployedPage() {
     (acc[r.kind] ||= []).push(r);
     return acc;
   }, {});
+
+  // Deterministic health checks. Runs over whichever namespaces are on screen,
+  // so it still works with the dropdown left on "All Namespaces".
+  const runDiagnosis = async () => {
+    const targets = namespace === "all" ? namespaces : [namespace];
+    if (targets.length === 0) return;
+
+    setDiagnosing(true);
+    try {
+      const reports = await Promise.all(targets.map(ns => fetchDiagnosis(ns)));
+      setDiagnosis({
+        namespace: namespace === "all" ? "all namespaces" : namespace,
+        findings: reports.flatMap(r => r?.findings ?? []),
+        checked: reports.reduce((n, r) => n + (r?.checked ?? 0), 0),
+      });
+    } catch (err) {
+      notifyError(errorMessage(err));
+    } finally {
+      setDiagnosing(false);
+    }
+  };
 
   const remove = async (r: K8sResource) => {
     const ok = await confirmAction({
@@ -215,6 +249,15 @@ export default function DeployedPage() {
               </span>
             )}
             <button
+              onClick={runDiagnosis}
+              disabled={diagnosing || resources.length === 0}
+              className="flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
+              title="Check for failing pods, stuck rollouts and unbound volumes"
+            >
+              <Stethoscope className={`h-4 w-4 ${diagnosing ? "animate-pulse" : ""}`} />
+              Diagnose
+            </button>
+            <button
               onClick={removeAll}
               disabled={busy === "all" || visible.length === 0}
               className="flex items-center gap-2 rounded bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50"
@@ -264,6 +307,45 @@ export default function DeployedPage() {
         {error && !loading && (
           <div className="mb-6 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
             {error}
+          </div>
+        )}
+
+        {diagnosis && (
+          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Diagnosis — {diagnosis.namespace}
+              </h2>
+              <button
+                onClick={() => setDiagnosis(null)}
+                className="text-xs text-gray-500 hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+
+            {diagnosis.findings.length === 0 ? (
+              <p className="text-sm text-green-600 dark:text-green-400">
+                Nothing wrong across {diagnosis.checked} workload(s).
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {diagnosis.findings.map((f, i) => (
+                  <div
+                    key={`${f.kind}-${f.name}-${f.reason}-${i}`}
+                    className={`rounded border p-3 text-xs ${
+                      MESSAGE_STYLES[f.severity === "critical" ? "error" : f.severity === "warning" ? "warning" : "info"]
+                    }`}
+                  >
+                    <div className="font-semibold">
+                      {f.reason} — {f.kind}/{f.name}
+                    </div>
+                    <p className="mt-1 break-words opacity-90">{f.detail}</p>
+                    {f.hint && <p className="mt-1 italic opacity-75">{f.hint}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -360,6 +442,14 @@ export default function DeployedPage() {
                           </div>
 
                           <div className="flex flex-shrink-0 items-center gap-2">
+                            <button
+                              onClick={() => setInspecting(r)}
+                              className="rounded p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-neutral-800"
+                              title={r.kind === "Pod" ? "Logs and events" : "Events"}
+                            >
+                              <ScrollText className="h-4 w-4" />
+                            </button>
+
                             {MONITORABLE.includes(r.kind) && (
                               <button
                                 onClick={() => setMonitoring(r)}
@@ -425,6 +515,10 @@ export default function DeployedPage() {
               />
             </div>
           </div>
+        )}
+
+        {inspecting && (
+          <InspectPanel resource={inspecting} onClose={() => setInspecting(null)} />
         )}
 
         <div className="mt-8 rounded-lg border border-neutral-800 bg-neutral-900 p-6">
