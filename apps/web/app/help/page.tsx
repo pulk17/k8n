@@ -2,6 +2,17 @@
 
 import { ArrowLeft, Box, Globe, FileCode, Lock, Network, Zap, GitBranch } from "lucide-react";
 import Link from "next/link";
+import { CONNECTION_TYPES } from "../../lib/constants";
+
+/** What each connection means, in the order worth explaining first. */
+const CONNECTION_HELP: { type: keyof typeof CONNECTION_TYPES; what: string }[] = [
+  { type: "network", what: "Service → Deployment/StatefulSet/Pod. Routes traffic to workloads." },
+  { type: "routing", what: "Ingress → Service. Exposes a service outside the cluster." },
+  { type: "config", what: "ConfigMap/Secret → workload. Supplies environment and files." },
+  { type: "storage", what: "PersistentVolumeClaim → workload. Mounts a volume." },
+  { type: "scaling", what: "HorizontalPodAutoscaler → workload. Sets the replica range." },
+  { type: "security", what: "ServiceAccount and RBAC → workload. Grants permissions." },
+];
 
 export default function HelpPage() {
   return (
@@ -71,36 +82,24 @@ export default function HelpPage() {
             k8n uses typed connections - you can only connect compatible resources. Hover over connection handles to see what they accept.
           </p>
           
+          {/* Colours come from CONNECTION_TYPES. Spelling them out here meant
+              the page kept claiming config was yellow and routing pink long
+              after the palette changed. */}
           <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-4 h-4 rounded-sm mt-1" style={{ backgroundColor: '#22c55e' }}></div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Network (Green)</h3>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Service → Deployment/StatefulSet/Pod - Routes traffic to workloads
-                </p>
+            {CONNECTION_HELP.map(({ type, what }) => (
+              <div key={type} className="flex items-start gap-3">
+                <div
+                  className="w-4 h-4 rounded-sm mt-1"
+                  style={{ backgroundColor: CONNECTION_TYPES[type].color }}
+                />
+                <div>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                    {CONNECTION_TYPES[type].label}
+                  </h3>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">{what}</p>
+                </div>
               </div>
-            </div>
-            
-            <div className="flex items-start gap-3">
-              <div className="w-4 h-4 rounded-sm mt-1" style={{ backgroundColor: '#eab308' }}></div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Config (Yellow)</h3>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  ConfigMap/Secret → Deployment/StatefulSet/DaemonSet/Pod - Provides configuration
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-start gap-3">
-              <div className="w-4 h-4 rounded-sm mt-1" style={{ backgroundColor: '#ec4899' }}></div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Routing (Pink)</h3>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Ingress → Service - Exposes services externally
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
         </section>
 

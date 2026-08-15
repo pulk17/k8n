@@ -10,6 +10,7 @@ import { useCanvasStore } from "../store/canvasStore";
 import { fieldsFor, FieldSpec } from "../lib/nodeSchema";
 import { inputsFor, outputsFor, HandleSpec } from "../lib/connections";
 import { FieldValue, NodeData, fieldValue } from "../lib/graph";
+import { darkStatusStyle } from "../lib/constants";
 
 const iconMap: Record<string, LucideIcon> = {
   Deployment: Box,
@@ -35,21 +36,6 @@ const iconMap: Record<string, LucideIcon> = {
   NetworkPolicy: Network,
   HorizontalPodAutoscaler: Layers,
   VerticalPodAutoscaler: Layers,
-};
-
-const statusColors: Record<string, { bg: string; text: string; dot: string }> = {
-  Running: { bg: "bg-green-950/20", text: "text-green-400", dot: "bg-green-500" },
-  Ready: { bg: "bg-green-950/20", text: "text-green-400", dot: "bg-green-500" },
-  Active: { bg: "bg-green-950/20", text: "text-green-400", dot: "bg-green-500" },
-  "Ready to Install": { bg: "bg-blue-950/20", text: "text-blue-400", dot: "bg-blue-500" },
-  "Not Deployed": { bg: "bg-gray-950/20", text: "text-gray-400", dot: "bg-gray-400" },
-  Pending: { bg: "bg-yellow-950/20", text: "text-yellow-400", dot: "bg-yellow-500" },
-  NotReady: { bg: "bg-yellow-950/20", text: "text-yellow-400", dot: "bg-yellow-500" },
-  Failed: { bg: "bg-red-950/20", text: "text-red-400", dot: "bg-red-500" },
-  Error: { bg: "bg-red-950/20", text: "text-red-400", dot: "bg-red-500" },
-  CrashLoopBackOff: { bg: "bg-red-950/20", text: "text-red-400", dot: "bg-red-500" },
-  Completed: { bg: "bg-blue-950/20", text: "text-blue-400", dot: "bg-blue-500" },
-  Unknown: { bg: "bg-gray-950/20", text: "text-gray-400", dot: "bg-gray-400" },
 };
 
 const inputClass =
@@ -181,7 +167,7 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
   const [editedName, setEditedName] = useState(data.name);
   const updateNodeData = useCanvasStore(state => state.updateNodeData);
 
-  const statusStyle = statusColors[data.status ?? ""] || statusColors.Unknown;
+  const statusStyle = darkStatusStyle(data.status);
   const Icon = iconMap[data.kind] || Box;
   const inputs = inputsFor(data.kind);
   const outputs = outputsFor(data.kind);

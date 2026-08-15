@@ -45,7 +45,7 @@ func resolveKind(client *k8s.Client, kind string) (*meta.RESTMapping, error) {
 //
 // force means what it means in kubectl: no grace period, background cascade.
 // Use it for objects stuck terminating, not as a way past the protection check.
-func DeleteResource(client *k8s.Client, kind, name, namespace string, force bool) error {
+func DeleteResource(ctx context.Context, client *k8s.Client, kind, name, namespace string, force bool) error {
 	if client == nil || client.DynamicClient == nil {
 		return fmt.Errorf("no cluster connection")
 	}
@@ -74,5 +74,5 @@ func DeleteResource(client *k8s.Client, kind, name, namespace string, force bool
 		opts.PropagationPolicy = &policy
 	}
 
-	return dr.Delete(context.Background(), name, opts)
+	return dr.Delete(ctx, name, opts)
 }

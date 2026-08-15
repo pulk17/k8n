@@ -348,11 +348,6 @@ export function fieldsFor(kind: string): FieldSpec[] {
   ];
 }
 
-/** True when k8n models this kind natively. */
-export function isKnownKind(kind: string): boolean {
-  return kind in NODE_SCHEMA;
-}
-
 /**
  * Starting values for a node dropped on the canvas, so it compiles to something
  * valid before the user has typed anything. Only fields the kind actually uses:

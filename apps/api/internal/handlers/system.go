@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
@@ -92,7 +94,10 @@ func DeleteResourceHandler(getClient ClientGetter) gin.HandlerFunc {
 			return
 		}
 
-		err := DeleteResource(client, req.Kind, req.Name, req.Namespace, c.Query("force") == "true")
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		err := DeleteResource(ctx, client, req.Kind, req.Name, req.Namespace, c.Query("force") == "true")
 		if errors.Is(err, ErrProtected) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"error": err.Error(),

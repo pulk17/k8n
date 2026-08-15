@@ -8,7 +8,9 @@ export interface Template {
   description: string;
   category: string;
   nodes: Omit<Node, 'id'>[];
-  edges: { sourceIdx: number; targetIdx: number; animated?: boolean; color?: string }[];
+  // Styling is not stored: makeEdge derives colour and animation from the
+  // connection type, so an edge here is only which node joins which.
+  edges: { sourceIdx: number; targetIdx: number }[];
   /** Key into TEMPLATE_ICONS; see WorkflowManager. */
   icon: TemplateIcon;
 }
@@ -98,11 +100,11 @@ export const templates: Template[] = [
       },
     ],
     edges: [
-      { sourceIdx: 0, targetIdx: 2, animated: false, color: "#eab308" },
-      { sourceIdx: 1, targetIdx: 2, animated: false, color: "#ef4444" },
-      { sourceIdx: 3, targetIdx: 2, animated: true, color: "#22c55e" },
-      { sourceIdx: 4, targetIdx: 3, animated: true, color: "#ec4899" },
-      { sourceIdx: 5, targetIdx: 2, animated: false, color: "#06b6d4" },
+      { sourceIdx: 0, targetIdx: 2 },
+      { sourceIdx: 1, targetIdx: 2 },
+      { sourceIdx: 3, targetIdx: 2 },
+      { sourceIdx: 4, targetIdx: 3 },
+      { sourceIdx: 5, targetIdx: 2 },
     ],
   },
   {
@@ -275,14 +277,14 @@ export const templates: Template[] = [
       },
     ],
     edges: [
-      { sourceIdx: 1, targetIdx: 0, animated: true, color: "#22c55e" },
-      { sourceIdx: 2, targetIdx: 3, animated: false, color: "#eab308" },
-      { sourceIdx: 4, targetIdx: 3, animated: true, color: "#22c55e" },
-      { sourceIdx: 5, targetIdx: 3, animated: false, color: "#06b6d4" },
-      { sourceIdx: 7, targetIdx: 6, animated: true, color: "#22c55e" },
-      { sourceIdx: 8, targetIdx: 10, animated: false, color: "#ef4444" },
-      { sourceIdx: 9, targetIdx: 10, animated: false, color: "#8b5cf6" },
-      { sourceIdx: 11, targetIdx: 10, animated: true, color: "#22c55e" },
+      { sourceIdx: 1, targetIdx: 0 },
+      { sourceIdx: 2, targetIdx: 3 },
+      { sourceIdx: 4, targetIdx: 3 },
+      { sourceIdx: 5, targetIdx: 3 },
+      { sourceIdx: 7, targetIdx: 6 },
+      { sourceIdx: 8, targetIdx: 10 },
+      { sourceIdx: 9, targetIdx: 10 },
+      { sourceIdx: 11, targetIdx: 10 },
     ],
   },
   {
@@ -391,11 +393,11 @@ export const templates: Template[] = [
       },
     ],
     edges: [
-      { sourceIdx: 0, targetIdx: 1, animated: false, color: "#eab308" },
-      { sourceIdx: 2, targetIdx: 1, animated: true, color: "#22c55e" },
-      { sourceIdx: 3, targetIdx: 4, animated: false, color: "#eab308" },
-      { sourceIdx: 5, targetIdx: 4, animated: true, color: "#22c55e" },
-      { sourceIdx: 6, targetIdx: 7, animated: false, color: "#eab308" },
+      { sourceIdx: 0, targetIdx: 1 },
+      { sourceIdx: 2, targetIdx: 1 },
+      { sourceIdx: 3, targetIdx: 4 },
+      { sourceIdx: 5, targetIdx: 4 },
+      { sourceIdx: 6, targetIdx: 7 },
     ],
   },
   {
@@ -497,18 +499,14 @@ export const templates: Template[] = [
       },
     ],
     edges: [
-      { sourceIdx: 1, targetIdx: 0, animated: true, color: "#22c55e" },
-      { sourceIdx: 2, targetIdx: 3, animated: false, color: "#eab308" },
-      { sourceIdx: 2, targetIdx: 4, animated: false, color: "#eab308" },
-      { sourceIdx: 5, targetIdx: 4, animated: false, color: "#06b6d4" },
-      { sourceIdx: 2, targetIdx: 6, animated: false, color: "#eab308" },
+      { sourceIdx: 1, targetIdx: 0 },
+      { sourceIdx: 2, targetIdx: 3 },
+      { sourceIdx: 2, targetIdx: 4 },
+      { sourceIdx: 5, targetIdx: 4 },
+      { sourceIdx: 2, targetIdx: 6 },
     ],
   },
 ];
-
-export function getTemplateById(id: string): Template | undefined {
-  return templates.find(t => t.id === id);
-}
 
 export function getTemplatesByCategory(category: string): Template[] {
   return templates.filter(t => t.category === category);

@@ -1,15 +1,11 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/dynamic"
 )
 
 type CRDSummary struct {
@@ -69,34 +65,3 @@ func GetCRDs(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	}
 }
 
-// FetchDynamicResources pulls instances of a given CRD using the dynamic client
-func FetchDynamicResources(dynClient dynamic.Interface, group, version, resource string) ([]Resource, error) {
-	gvr := schema.GroupVersionResource{Group: group, Version: version, Resource: resource}
-
-	list, err := dynClient.Resource(gvr).Namespace("").List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	var dynResources []Resource
-	for _, item := range list.Items {
-		var owners []string
-		for _, o := range item.GetOwnerReferences() {
-			owners = append(owners, o.Name)
-		}
-
-		status := "Active" // Simplification for CRDs
-
-		dynResources = append(dynResources, Resource{
-			Kind:            item.GetKind(),
-			Name:            item.GetName(),
-			Namespace:       item.GetNamespace(),
-			Labels:          item.GetLabels(),
-			Status:          status,
-			UID:             string(item.GetUID()),
-			OwnerReferences: owners,
-		})
-	}
-
-	return dynResources, nil
-}

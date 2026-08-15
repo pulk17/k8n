@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Sparkles, X, Send, Loader2, Wrench, Check, Ban, AlertCircle, Stethoscope,
+  Sparkles, X, Send, Loader2, Wrench, Check, Ban, AlertCircle, BookOpen, Stethoscope,
 } from "lucide-react";
 import { useCanvasStore, GraphPatch } from "../store/canvasStore";
-import { streamChat, fetchAIStatus, ChatTurn } from "../lib/ai";
+import { streamChat, fetchAIStatus, ChatTurn, explainNode } from "../lib/ai";
 import { errorMessage } from "../lib/api";
 
 interface Message {
@@ -34,7 +34,7 @@ export default function AIPanel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const { nodes, edges, activeNamespace, applyGraphPatch } = useCanvasStore();
+  const { nodes, edges, activeNamespace, selectedNodeId, applyGraphPatch } = useCanvasStore();
 
   useEffect(() => {
     fetchAIStatus().then(s => setEnabled(s.enabled));
@@ -102,6 +102,35 @@ export default function AIPanel() {
     } finally {
       setBusy(false);
       abortRef.current = null;
+    }
+  };
+
+  /**
+   * Explains one node. This is a single request rather than a streamed turn,
+   * so it lands in the transcript as a finished answer.
+   */
+  const explainSelected = async () => {
+    const node = nodes.find(n => n.id === selectedNodeId);
+    if (!node || busy) return;
+
+    const question = `Explain ${node.data.kind} "${node.data.name}".`;
+    setMessages(prev => [...prev, { role: "user", text: question }, { role: "model", text: "" }]);
+    setBusy(true);
+    try {
+      const result = await explainNode({ nodes, edges }, node.id);
+      setMessages(prev => {
+        const next = [...prev];
+        next[next.length - 1] = { role: "model", text: result?.explanation || "No explanation came back." };
+        return next;
+      });
+    } catch (err) {
+      setMessages(prev => {
+        const next = [...prev];
+        next[next.length - 1] = { role: "model", text: "", error: errorMessage(err) };
+        return next;
+      });
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -276,6 +305,17 @@ export default function AIPanel() {
           <Stethoscope className="w-3 h-3" />
           Diagnose this namespace
         </button>
+
+        {selectedNodeId && (
+          <button
+            onClick={explainSelected}
+            disabled={busy}
+            className="w-full px-2 py-1.5 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 border border-neutral-700 rounded text-[11px] text-gray-300 flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <BookOpen className="w-3 h-3" />
+            Explain the selected node
+          </button>
+        )}
 
         <form
           onSubmit={e => {

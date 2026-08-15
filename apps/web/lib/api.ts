@@ -327,13 +327,9 @@ export const searchHelmCharts = (query: string) =>
 export const installHelmChart = (params: ChartRequest) =>
   request<HelmRelease>("/api/helm/install", { method: "POST", body: params, timeoutMs: 180000 });
 
-/** Renders a chart to YAML without installing it, for the manifest preview. */
-export const templateHelmChart = (params: ChartRequest) =>
-  request<{ yaml: string }>("/api/helm/template", {
-    method: "POST",
-    body: params,
-    timeoutMs: 120000,
-  });
+// A HelmRelease node is rendered into the manifest preview by the compiler
+// (compile returns it as `helmYaml`), so nothing here calls /api/helm/template
+// directly. The endpoint stays for MCP clients and for curl.
 
 export const fetchHelmReleases = () =>
   request<HelmRelease[]>("/api/helm/releases").then(r => r ?? []);

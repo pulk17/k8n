@@ -30,7 +30,7 @@ import {
   K8sResource,
   watchResources,
 } from "../../lib/api";
-import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS, STATUS_STYLES } from "../../lib/constants";
+import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS, statusStyle } from "../../lib/constants";
 import { confirmAction, notify, notifyError } from "../../lib/dialog";
 import ApiConnectionError from "../../components/ApiConnectionError";
 import InspectPanel from "../../components/InspectPanel";
@@ -378,7 +378,7 @@ export default function DeployedPage() {
 
                 <div className="divide-y divide-gray-200 dark:divide-neutral-800">
                   {items.map((r) => {
-                    const status = STATUS_STYLES[r.status] || STATUS_STYLES.Unknown;
+                    const status = statusStyle(r.status);
                     const isOpen = expanded[r.uid];
                     const tone = messageTone(r);
 

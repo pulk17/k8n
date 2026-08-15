@@ -56,19 +56,63 @@ export const RESOURCE_COLORS: Record<string, string> = {
 /** Default for kinds k8n has no model for, which in practice means CRDs. */
 export const DEFAULT_RESOURCE_COLOR = "#94a3b8";
 
-/** Badge styling per reported resource status. `Unknown` is the fallback. */
-export const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
-  Running: { bg: "bg-green-50 dark:bg-green-950/20", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
-  Ready: { bg: "bg-green-50 dark:bg-green-950/20", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
-  Active: { bg: "bg-green-50 dark:bg-green-950/20", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
-  Completed: { bg: "bg-blue-50 dark:bg-blue-950/20", text: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
-  Succeeded: { bg: "bg-blue-50 dark:bg-blue-950/20", text: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
-  Pending: { bg: "bg-yellow-50 dark:bg-yellow-950/20", text: "text-yellow-700 dark:text-yellow-400", dot: "bg-yellow-500" },
-  NotReady: { bg: "bg-yellow-50 dark:bg-yellow-950/20", text: "text-yellow-700 dark:text-yellow-400", dot: "bg-yellow-500" },
-  Failed: { bg: "bg-red-50 dark:bg-red-950/20", text: "text-red-700 dark:text-red-400", dot: "bg-red-500" },
-  Error: { bg: "bg-red-50 dark:bg-red-950/20", text: "text-red-700 dark:text-red-400", dot: "bg-red-500" },
-  Unknown: { bg: "bg-gray-50 dark:bg-gray-950/20", text: "text-gray-600 dark:text-gray-400", dot: "bg-gray-400" },
+/**
+ * What a status *means*. This is the one place that decides, because the two
+ * surfaces that show status need different classes for it: the deployed list
+ * follows the theme, while canvas nodes are always dark whatever the theme is.
+ * Both read their colours from the tone, so adding a status here is enough.
+ */
+export type StatusTone = "good" | "warn" | "bad" | "info" | "idle";
+
+const STATUS_TONES: Record<string, StatusTone> = {
+  Running: "good",
+  Ready: "good",
+  Active: "good",
+  Bound: "good",
+  Completed: "info",
+  Succeeded: "info",
+  "Ready to Install": "info",
+  Pending: "warn",
+  NotReady: "warn",
+  Failed: "bad",
+  Error: "bad",
+  CrashLoopBackOff: "bad",
+  // Set on an imported node once the resource stops coming back from the
+  // cluster, so a deleted thing does not sit there looking healthy.
+  Deleted: "idle",
+  "Not Deployed": "idle",
+  Unknown: "idle",
 };
+
+const toneOf = (status?: string): StatusTone => STATUS_TONES[status ?? ""] ?? "idle";
+
+interface StatusStyle {
+  bg: string;
+  text: string;
+  dot: string;
+}
+
+const THEME_TONES: Record<StatusTone, StatusStyle> = {
+  good: { bg: "bg-green-50 dark:bg-green-950/20", text: "text-green-700 dark:text-green-400", dot: "bg-green-500" },
+  info: { bg: "bg-blue-50 dark:bg-blue-950/20", text: "text-blue-700 dark:text-blue-400", dot: "bg-blue-500" },
+  warn: { bg: "bg-yellow-50 dark:bg-yellow-950/20", text: "text-yellow-700 dark:text-yellow-400", dot: "bg-yellow-500" },
+  bad: { bg: "bg-red-50 dark:bg-red-950/20", text: "text-red-700 dark:text-red-400", dot: "bg-red-500" },
+  idle: { bg: "bg-gray-50 dark:bg-gray-950/20", text: "text-gray-600 dark:text-gray-400", dot: "bg-gray-400" },
+};
+
+const DARK_TONES: Record<StatusTone, StatusStyle> = {
+  good: { bg: "bg-green-950/20", text: "text-green-400", dot: "bg-green-500" },
+  info: { bg: "bg-blue-950/20", text: "text-blue-400", dot: "bg-blue-500" },
+  warn: { bg: "bg-yellow-950/20", text: "text-yellow-400", dot: "bg-yellow-500" },
+  bad: { bg: "bg-red-950/20", text: "text-red-400", dot: "bg-red-500" },
+  idle: { bg: "bg-gray-950/20", text: "text-gray-400", dot: "bg-gray-400" },
+};
+
+/** Badge styling for a status, following the page theme. */
+export const statusStyle = (status?: string): StatusStyle => THEME_TONES[toneOf(status)];
+
+/** The same, for canvas nodes, which sit on a dark canvas in either theme. */
+export const darkStatusStyle = (status?: string): StatusStyle => DARK_TONES[toneOf(status)];
 
 /**
  * What an edge means. `label` is what the legend and the handle tooltip say.

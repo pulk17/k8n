@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
@@ -41,6 +42,12 @@ func GetPodMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			namespace = "default"
 		}
 
+		// The metrics panel polls every few seconds. Without a deadline tied to
+		// the request, an unreachable metrics-server leaves a handler hanging
+		// for each of those polls.
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
+
 		// Create metrics client
 		metricsClient, err := versioned.NewForConfig(client.Config)
 		if err != nil {
@@ -54,7 +61,7 @@ func GetPodMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 
 		// Get pod metrics
 		podMetrics, err := metricsClient.MetricsV1beta1().PodMetricses(namespace).Get(
-			context.Background(),
+			ctx,
 			podName,
 			metav1.GetOptions{},
 		)
@@ -85,6 +92,9 @@ func GetNamespaceMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			namespace = "default"
 		}
 
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
+
 		// Create metrics client
 		metricsClient, err := versioned.NewForConfig(client.Config)
 		if err != nil {
@@ -98,7 +108,7 @@ func GetNamespaceMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 
 		// Get all pod metrics in namespace
 		podMetricsList, err := metricsClient.MetricsV1beta1().PodMetricses(namespace).List(
-			context.Background(),
+			ctx,
 			metav1.ListOptions{},
 		)
 		if err != nil {
@@ -182,6 +192,9 @@ func GetResourceMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 		kind := c.Param("kind")
 		name := c.Param("name")
 
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
+
 		// Create metrics client
 		metricsClient, err := versioned.NewForConfig(client.Config)
 		if err != nil {
@@ -206,7 +219,7 @@ func GetResourceMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			// Try each selector until we find pods
 			for _, selector := range labelSelectors {
 				podMetricsList, err = metricsClient.MetricsV1beta1().PodMetricses(namespace).List(
-					context.Background(),
+					ctx,
 					metav1.ListOptions{LabelSelector: selector},
 				)
 				if err == nil && len(podMetricsList.Items) > 0 {
@@ -218,7 +231,7 @@ func GetResourceMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			// whole namespace.
 			if podMetricsList == nil || len(podMetricsList.Items) == 0 {
 				allPodMetrics, listErr := metricsClient.MetricsV1beta1().PodMetricses(namespace).List(
-					context.Background(),
+					ctx,
 					metav1.ListOptions{},
 				)
 				if listErr == nil {
@@ -241,7 +254,7 @@ func GetResourceMetrics(clientGetter func() *k8s.Client) gin.HandlerFunc {
 		} else if kind == "Pod" {
 			// Get single pod metrics
 			podMetrics, err := metricsClient.MetricsV1beta1().PodMetricses(namespace).Get(
-				context.Background(),
+				ctx,
 				name,
 				metav1.GetOptions{},
 			)
@@ -316,6 +329,9 @@ func CheckMetricsServer(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			return
 		}
 
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
+
 		// Try to create metrics client
 		metricsClient, err := versioned.NewForConfig(client.Config)
 		if err != nil {
@@ -329,7 +345,7 @@ func CheckMetricsServer(clientGetter func() *k8s.Client) gin.HandlerFunc {
 
 		// Try to list any pod metrics to verify metrics-server is working
 		_, err = metricsClient.MetricsV1beta1().PodMetricses("kube-system").List(
-			context.Background(),
+			ctx,
 			metav1.ListOptions{Limit: 1},
 		)
 

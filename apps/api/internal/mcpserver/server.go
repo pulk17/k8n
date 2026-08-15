@@ -351,7 +351,7 @@ func registerWriteTools(server *mcp.Server, getClient ClientGetter, setClient Cl
 		if handlers.IsProtected(in.Name, in.Namespace) {
 			return errorResult("%s/%s is a protected system resource and cannot be deleted through k8n.", in.Namespace, in.Name), nil, nil
 		}
-		if err := handlers.DeleteResource(client, in.Kind, in.Name, in.Namespace, in.Force); err != nil {
+		if err := handlers.DeleteResource(ctx, client, in.Kind, in.Name, in.Namespace, in.Force); err != nil {
 			return errorResult("Failed to delete %s %s/%s: %v", in.Kind, in.Namespace, in.Name, err), nil, nil
 		}
 		return textResult("Deleted %s %s/%s.", in.Kind, in.Namespace, in.Name), nil, nil
