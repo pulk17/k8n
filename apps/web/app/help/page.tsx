@@ -230,19 +230,15 @@ export default function HelpPage() {
             <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded p-4">
               <h3 className="font-semibold text-green-800 dark:text-green-400 mb-2">Helm support</h3>
               <p className="text-green-700 dark:text-green-300">
-                Helm installation is now <strong>fully implemented</strong>! Charts will be installed to your cluster with the configured values. Common repositories (bitnami, stable, ingress-nginx, jetstack) are automatically configured.
+                Charts are rendered into the manifest preview before installation, then installed as Helm releases with the configured version and values.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">Pre-configured Repositories</h3>
-              <p className="mb-2">k8n automatically configures these popular Helm repositories:</p>
-              <ul className="list-disc list-inside space-y-1 ml-2">
-                <li><strong>bitnami:</strong> Bitnami Application Catalog (most popular charts)</li>
-                <li><strong>stable:</strong> Official Helm stable charts</li>
-                <li><strong>ingress-nginx:</strong> NGINX Ingress Controller</li>
-                <li><strong>jetstack:</strong> cert-manager and other Jetstack tools</li>
-              </ul>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">How chart sources work</h3>
+              <p>
+                Search results come from Artifact Hub. k8n uses each chart&apos;s repository URL directly and does not add or modify repositories in your local Helm configuration.
+              </p>
             </div>
 
             <div>
