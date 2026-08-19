@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/*
+ * k8n is a dark-first tool, and it was only accidentally dark.
+ *
+ * Nothing ever set a `dark` class, so Tailwind's `dark:` variant fell back to
+ * the OS preference — while the canvas, the nodes and the top bar were all
+ * hardcoded `bg-neutral-900`. On a machine set to light, half the app went
+ * light and the other half did not, and the `.dark .custom-scrollbar` rules
+ * that used to live here could never match anything. Declaring the variant as
+ * a class and putting that class on <html> makes the existing `dark:` styles
+ * fire reliably, and leaves room for a real theme toggle later.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, monospace;
@@ -9,14 +22,42 @@
   --background: #ffffff;
   --foreground: #0a0a0a;
   --canvas-grid: #e5e7eb;
+
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+  --scrollbar-track: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --canvas-grid: #262626;
-  }
+/*
+ * Surfaces are numbered by how far they sit from the canvas, so a panel never
+ * has to guess which neutral to use: the canvas is 0, a floating panel is 1,
+ * a header or an inset row inside that panel is 2. Depth then reads as
+ * elevation instead of as an arbitrary pick between neutral-800 and 900.
+ */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --canvas-grid: #262626;
+
+  --surface-0: #0a0a0a;
+  --surface-1: #171717;
+  --surface-2: #212121;
+  --surface-3: #2a2a2a;
+
+  --border-subtle: #262626;
+  --border-strong: #3f3f3f;
+
+  --text-primary: #ededed;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
+
+  --accent: #3b82f6;
+
+  /* Scrollbars used to be styled on `*` with hardcoded slate colours, which
+     painted dark scrollbars onto light surfaces everywhere in the app. */
+  --scrollbar-thumb: #3f3f3f;
+  --scrollbar-thumb-hover: #525252;
+  --scrollbar-track: transparent;
 }
 
 body {
@@ -35,100 +76,105 @@ body {
   box-sizing: border-box;
 }
 
-/* Custom scrollbar */
+/* ── Focus ────────────────────────────────────────────────────────────────
+   There was no focus style anywhere, so tabbing through the app left you with
+   no idea where you were. `:focus-visible` only shows for keyboard users, so
+   this costs mouse users nothing. */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* React Flow puts its own ring on the pane and nodes; ours would double it. */
+.react-flow__pane:focus-visible,
+.react-flow__node:focus-visible {
+  outline: none;
+}
+
+/* ── Scrollbars ───────────────────────────────────────────────────────────
+   One rule, driven by the tokens above, so a scrollbar always matches the
+   surface it is scrolling. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+/* Kept as a class because several panels opt into a slimmer bar. */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 10px;
-  transition: background-color 0.2s;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8;
-}
-
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #475569;
-}
-
-.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: #64748b;
-}
-
-/* React Flow custom styles */
+/* ── Canvas ───────────────────────────────────────────────────────────────
+   Selection is a ring plus a drop shadow rather than a blur, so a selected
+   node does not appear to grow. Edges thicken on hover, which is the only
+   affordance telling you a wire can be clicked at all. */
 .react-flow__node {
   cursor: pointer;
 }
 
 .react-flow__node.selected {
-  box-shadow: 0 0 0 2px #3b82f6;
+  box-shadow: 0 0 0 2px #3b82f6, 0 8px 24px -8px rgb(59 130 246 / 0.45);
 }
 
 .react-flow__edge-path {
   stroke-width: 2;
+  transition: stroke-width 0.15s ease, opacity 0.15s ease;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 3.5;
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #3b82f6;
-  stroke-width: 3;
+  stroke-width: 4;
 }
 
-.react-flow__controls {
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+/* The clickable band around an edge. React Flow ships this invisible and thin;
+   widening it is the difference between "the wire is selectable" and "the wire
+   is selectable if you are precise". */
+.react-flow__edge-interaction {
+  stroke-width: 24;
 }
 
 .react-flow__controls-button {
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.dark .react-flow__controls-button {
-  background: #262626;
-  border-bottom-color: #404040;
-  color: #ededed;
+  border-bottom: 1px solid #262626;
+  background: #171717;
+  color: #a3a3a3;
+  fill: currentColor;
 }
 
 .react-flow__controls-button:hover {
-  background: #f3f4f6;
+  background: #2a2a2a;
+  color: #ededed;
 }
 
-.dark .react-flow__controls-button:hover {
-  background: #404040;
+.react-flow__attribution {
+  background: transparent;
+  font-size: 9px;
+  opacity: 0.35;
 }
 
-/* Global scrollbar styling */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #4b5563 #1f2937;
-}
-
-*::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-}
-
-*::-webkit-scrollbar-track {
-  background: #1f2937;
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: #4b5563;
-  border-radius: 6px;
-  border: 3px solid #1f2937;
-}
-
-*::-webkit-scrollbar-thumb:hover {
-  background-color: #6b7280;
-}
-
-/* Toast notification animations */
+/* ── Motion ─────────────────────────────────────────────────────────────── */
 @keyframes slideInFromRight {
   from {
     transform: translateX(100%);
@@ -140,11 +186,38 @@ body {
   }
 }
 
+@keyframes fadeInUp {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 .animate-in {
   animation: slideInFromRight 0.3s ease-out;
 }
 
-/* Improved node selection glow */
-.react-flow__node.selected {
-  box-shadow: 0 0 0 2px #3b82f6, 0 0 20px rgba(59, 130, 246, 0.15);
+.animate-panel-in {
+  animation: fadeInUp 0.16s ease-out;
+}
+
+/* Animated edges, spinners and sliding panels are decoration on a screen that
+   is mostly text. Honouring the OS setting costs nothing, and this app moves
+   a lot. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .react-flow__edge-path {
+    stroke-dasharray: none !important;
+  }
 }

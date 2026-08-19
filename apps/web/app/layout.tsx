@@ -13,8 +13,11 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // k8n is dark by design — the canvas, the nodes and the toolbar are all dark
+  // whatever the OS says. Declaring it here is what makes every `dark:` class
+  // in the app agree with them, instead of following the OS preference.
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body>
         {children}
         <Dialogs />
