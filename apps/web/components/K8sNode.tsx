@@ -99,13 +99,11 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
   const outputs = outputsFor(data.kind);
   const isImported = data.origin === "cluster";
 
+  // Same rule as the inspector's Name field: take what was typed and let the
+  // graph checks judge it. Trimming and silently reverting an empty name here
+  // meant the two ways of renaming a resource behaved differently.
   const commitName = () => {
-    const next = editedName?.trim();
-    if (next && next !== data.name) {
-      updateNodeData(id, { name: next });
-    } else {
-      setEditedName(data.name);
-    }
+    updateNodeData(id, { name: editedName });
     setIsEditingName(false);
   };
 

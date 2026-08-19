@@ -37,6 +37,11 @@ const WORKLOADS = new Set([
   "Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Pod", "Job", "CronJob",
 ]);
 
+// RFC 1123 subdomain, which is what almost every Kubernetes object name has to
+// be. Shape only — the 253 and 63 character limits are left to the API server,
+// since an over-long name is not the mistake anyone actually makes.
+const DNS_1123 = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
+
 const str = (node: Node<NodeData>, key: string): string => {
   const value = fieldValue(node.data, key);
   return value === undefined ? "" : String(value).trim();
@@ -66,6 +71,15 @@ export function checkGraph(nodes: Node<NodeData>[], edges: Edge[]): GraphIssue[]
     // Imported resources describe what is already running. Telling someone
     // their live cluster is missing a field they never typed is just noise.
     if (node.data.origin === "cluster") continue;
+
+    if (!DNS_1123.test(name)) {
+      add(
+        "warning",
+        name ? `${name} is not a valid Kubernetes name` : `This ${kind} has no name`,
+        "Names must be lowercase letters, digits, dashes and dots, starting and ending with a letter or digit — the API server rejects anything else at apply time, with a message about RFC 1123 that does not say which object it meant.",
+        "Use something like my-app. Capitals and spaces are the usual culprits."
+      );
+    }
 
     if (WORKLOADS.has(kind) && kind !== "ReplicaSet" && !str(node, "image")) {
       add(
