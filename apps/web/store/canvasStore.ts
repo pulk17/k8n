@@ -24,6 +24,15 @@ const SYSTEM_NAMESPACES = ["kube-system", "kube-public", "kube-node-lease", "loc
 
 const MAX_HISTORY = 50;
 
+// Typing into a field calls updateNodeData once per keystroke. Pushing a history
+// entry for each one made Ctrl+Z walk back a character at a time, and a
+// 16-character name evicted a third of the buffer — so the structural change you
+// actually wanted to undo was already gone. Successive edits to the same node
+// inside this window count as one entry, which is the same reasoning
+// onNodesChange already applies to drag frames.
+const EDIT_COALESCE_MS = 600;
+let lastEdit = { id: "", at: 0 };
+
 export interface CanvasState {
   nodes: Node[];
   edges: Edge[];
@@ -126,6 +135,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   undo: () => {
     const { nodes, edges, history, historyIndex } = get();
     if (historyIndex < 0) return;
+    // Forget the edit burst, or typing into the same node right after an undo
+    // would coalesce into it and lose the state we just restored.
+    lastEdit = { id: "", at: 0 };
     const nextHistory = [...history];
     const snapshot = history[historyIndex];
     nextHistory[historyIndex] = { nodes: clone(nodes), edges: clone(edges) };
@@ -141,6 +153,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   redo: () => {
     const { nodes, edges, history, historyIndex } = get();
     if (historyIndex >= history.length - 1) return;
+    lastEdit = { id: "", at: 0 };
     const nextIndex = historyIndex + 1;
     const snapshot = history[nextIndex];
     const nextHistory = [...history];
@@ -226,7 +239,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   updateNodeData: (id, data) => {
-    get().saveHistory();
+    const now = Date.now();
+    if (id !== lastEdit.id || now - lastEdit.at >= EDIT_COALESCE_MS) get().saveHistory();
+    lastEdit = { id, at: now };
+
     set({
       nodes: get().nodes.map(node => {
         if (node.id !== id) return node;
