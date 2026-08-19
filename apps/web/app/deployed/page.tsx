@@ -16,6 +16,7 @@ import {
   Globe,
   Layers,
   Lock,
+  MoreHorizontal,
   Network,
   RefreshCw,
   ScrollText,
@@ -136,6 +137,7 @@ export default function DeployedPage() {
   const visible = resources
     .filter((r) => namespace === "all" || r.namespace === namespace)
     .filter((r) => !hideProtected || !r.protected);
+  const deletable = visible.filter((r) => !r.protected);
 
   const byKind = visible.reduce<Record<string, K8sResource[]>>((acc, r) => {
     (acc[r.kind] ||= []).push(r);
@@ -184,7 +186,7 @@ export default function DeployedPage() {
   };
 
   const removeAll = async () => {
-    const targets = visible.filter((r) => !r.protected);
+    const targets = deletable;
     if (targets.length === 0) {
       notify("Nothing to delete in this view");
       return;
@@ -257,15 +259,6 @@ export default function DeployedPage() {
               <Stethoscope className={`h-4 w-4 ${diagnosing ? "animate-pulse" : ""}`} />
               Diagnose
             </button>
-            <button
-              onClick={removeAll}
-              disabled={busy === "all" || visible.length === 0}
-              className="flex items-center gap-2 rounded bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-              title="Delete every resource shown, skipping protected ones"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete All
-            </button>
           </div>
         </div>
 
@@ -295,6 +288,29 @@ export default function DeployedPage() {
           </label>
 
           <span className="text-sm text-gray-500 dark:text-gray-400">{visible.length} resources</span>
+
+          <details className="relative ml-auto">
+            <summary className="flex cursor-pointer list-none items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800">
+              <MoreHorizontal className="h-4 w-4" />
+              Bulk actions
+            </summary>
+            <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+              <button
+                onClick={removeAll}
+                disabled={busy === "all" || deletable.length === 0}
+                className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/20"
+                title="Delete every non-system resource shown"
+              >
+                <Trash2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>
+                  <span className="block font-medium">Delete all shown</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    {deletable.length} non-system {deletable.length === 1 ? "resource" : "resources"}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </details>
         </div>
 
         {loading && (
