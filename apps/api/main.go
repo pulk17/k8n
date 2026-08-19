@@ -164,7 +164,16 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	if err := r.Run(":" + port); err != nil {
+	// Loopback by default. There is no authentication on any of these routes,
+	// and CORS is a browser policy — it stops a web page calling us, not curl.
+	// Binding every interface meant anyone on the same network could apply and
+	// delete cluster resources. Set API_HOST=0.0.0.0 to expose it deliberately,
+	// and put something that authenticates in front when you do.
+	host := os.Getenv("API_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if err := r.Run(host + ":" + port); err != nil {
 		fmt.Printf("Server stopped: %v\n", err)
 		os.Exit(1)
 	}
