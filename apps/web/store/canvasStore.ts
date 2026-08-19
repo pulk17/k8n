@@ -112,7 +112,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   history: [],
   historyIndex: -1,
 
-  canUndo: () => get().historyIndex > 0,
+  canUndo: () => get().historyIndex >= 0,
   canRedo: () => get().historyIndex < get().history.length - 1,
 
   saveHistory: () => {
@@ -124,25 +124,32 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   undo: () => {
-    const { history, historyIndex } = get();
-    if (historyIndex <= 0) return;
-    const prev = history[historyIndex - 1];
+    const { nodes, edges, history, historyIndex } = get();
+    if (historyIndex < 0) return;
+    const nextHistory = [...history];
+    const snapshot = history[historyIndex];
+    nextHistory[historyIndex] = { nodes: clone(nodes), edges: clone(edges) };
     set({
-      nodes: clone(prev.nodes),
-      edges: clone(prev.edges),
+      nodes: clone(snapshot.nodes),
+      edges: clone(snapshot.edges),
+      history: nextHistory,
       historyIndex: historyIndex - 1,
       dirty: true,
     });
   },
 
   redo: () => {
-    const { history, historyIndex } = get();
+    const { nodes, edges, history, historyIndex } = get();
     if (historyIndex >= history.length - 1) return;
-    const next = history[historyIndex + 1];
+    const nextIndex = historyIndex + 1;
+    const snapshot = history[nextIndex];
+    const nextHistory = [...history];
+    nextHistory[nextIndex] = { nodes: clone(nodes), edges: clone(edges) };
     set({
-      nodes: clone(next.nodes),
-      edges: clone(next.edges),
-      historyIndex: historyIndex + 1,
+      nodes: clone(snapshot.nodes),
+      edges: clone(snapshot.edges),
+      history: nextHistory,
+      historyIndex: nextIndex,
       dirty: true,
     });
   },
