@@ -179,10 +179,10 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
             <FieldInput
               spec={{ key: "name", label: "Name", type: "text", placeholder: "my-app" }}
               value={name}
-              onChange={v => {
-                const next = String(v ?? "").trim();
-                if (next) setField("name", next);
-              }}
+              // Straight through: trimming on every keystroke ate the space in
+              // "my app", and refusing empty meant you could not clear the box
+              // to retype. The compiler already skips unnamed nodes with a note.
+              onChange={v => setField("name", String(v ?? ""))}
             />
             <FieldInput
               spec={{
