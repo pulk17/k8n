@@ -11,6 +11,7 @@ interface YamlPreviewProps {
   helmYaml?: string;
   objects: number;
   notes: CompileNote[];
+  scope: string;
   applying: boolean;
   onApply: () => void;
   onClose: () => void;
@@ -24,7 +25,7 @@ interface YamlPreviewProps {
  * silently overwrite live configuration.
  */
 export default function YamlPreview({
-  yaml, helmYaml, objects, notes, applying, onApply, onClose,
+  yaml, helmYaml, objects, notes, scope, applying, onApply, onClose,
 }: YamlPreviewProps) {
   const [copied, setCopied] = useState(false);
 
@@ -32,6 +33,7 @@ export default function YamlPreview({
   // release will create is reviewable even though Helm installs it, not us.
   const shown = helmYaml ? `${yaml}
 ${helmYaml}` : yaml;
+  const hasManifest = shown.trim().length > 0;
 
   const warnings = notes.filter(n => n.level === "warning");
   const infos = notes.filter(n => n.level === "info");
@@ -59,7 +61,8 @@ ${helmYaml}` : yaml;
           <div>
             <h2 className="text-sm font-semibold text-gray-100">Manifest Preview</h2>
             <p className="text-[11px] text-gray-500 mt-0.5">
-              {objects} {objects === 1 ? "resource" : "resources"} · dry-run runs before anything is applied
+              {objects} direct {objects === 1 ? "resource" : "resources"}
+              {helmYaml ? " · Helm preview included" : ""} · {scope} · dry-run runs before anything is applied
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -111,7 +114,7 @@ ${helmYaml}` : yaml;
         )}
 
         <div className="flex-1 min-h-0">
-          {yaml ? (
+          {hasManifest ? (
             <Editor
               height="100%"
               defaultLanguage="yaml"
@@ -143,7 +146,7 @@ ${helmYaml}` : yaml;
           </button>
           <button
             onClick={onApply}
-            disabled={applying || !yaml}
+            disabled={applying || !hasManifest}
             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}

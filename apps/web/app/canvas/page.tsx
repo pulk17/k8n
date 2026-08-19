@@ -103,7 +103,7 @@ function CanvasPageContent() {
   useEffect(() => {
     setCompiled(null);
     setShowPreview(false);
-  }, [nodes, edges]);
+  }, [nodes, edges, activeNamespace]);
 
   useEffect(() => {
     loadNamespaces();
@@ -265,10 +265,10 @@ function CanvasPageContent() {
     setErrors([]);
     setCompiling(true);
     try {
-      const result = await compileGraph(nodes, edges);
+      const result = await compileGraph(filteredNodes, filteredEdges);
       setCompiled(result);
       setShowPreview(true);
-      if (result.objects === 0 && !nodes.some(n => n.data.kind === "HelmRelease")) {
+      if (result.objects === 0 && !filteredNodes.some(n => n.data.kind === "HelmRelease")) {
         notify("Nothing to apply — the graph compiled to no resources.");
       }
     } catch (err) {
@@ -276,7 +276,7 @@ function CanvasPageContent() {
     } finally {
       setCompiling(false);
     }
-  }, [nodes, edges]);
+  }, [filteredNodes, filteredEdges]);
 
   /** Dry-runs, then applies, the YAML the user just reviewed. */
   const handleApply = useCallback(async () => {
@@ -297,7 +297,7 @@ function CanvasPageContent() {
       // preview — applying both would create every resource twice, once owned
       // by k8n and once by Helm.
       const failures: { resource: string; message: string }[] = [];
-      for (const node of nodes.filter(n => n.data.kind === "HelmRelease")) {
+      for (const node of filteredNodes.filter(n => n.data.kind === "HelmRelease")) {
         const chart = node.data.chart;
         if (!chart?.name) {
           failures.push({ resource: node.data.name, message: "No chart selected on this node" });
@@ -335,7 +335,7 @@ function CanvasPageContent() {
       );
       setApplyState("error");
     }
-  }, [compiled, nodes]);
+  }, [compiled, filteredNodes]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -465,7 +465,7 @@ function CanvasPageContent() {
 
           <button
             onClick={handlePreview}
-            disabled={compiling || applying || nodes.length === 0}
+            disabled={compiling || applying || filteredNodes.length === 0}
             className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded text-sm font-medium text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             title="Compile the graph and review the YAML"
           >
@@ -475,7 +475,7 @@ function CanvasPageContent() {
 
           <button
             onClick={() => (compiled ? setShowPreview(true) : handlePreview())}
-            disabled={applying || compiling || nodes.length === 0}
+            disabled={applying || compiling || filteredNodes.length === 0}
             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             title="Review, dry-run, then apply"
           >
@@ -508,11 +508,13 @@ function CanvasPageContent() {
         {/* Right: Namespace, View Options, Help */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded">
-            <span className="text-xs font-medium text-gray-400">Namespace:</span>
+            <span className="text-xs font-medium text-gray-400">Scope:</span>
             <select 
               className="text-sm bg-transparent border-none text-gray-300 outline-none cursor-pointer"
               value={activeNamespace}
               onChange={(e) => setActiveNamespace(e.target.value)}
+              aria-label="View and apply namespace scope"
+              title="Only resources in this scope are shown, previewed, and applied"
             >
               <option value="all">All</option>
               {namespaces.map(ns => (
@@ -595,6 +597,7 @@ function CanvasPageContent() {
           helmYaml={compiled.helmYaml}
           objects={compiled.objects}
           notes={compiled.notes || []}
+          scope={activeNamespace === "all" ? "all namespaces" : `namespace ${activeNamespace}`}
           applying={applying}
           onApply={handleApply}
           onClose={() => setShowPreview(false)}
