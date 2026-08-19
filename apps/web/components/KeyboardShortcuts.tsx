@@ -11,6 +11,12 @@ interface KeyboardShortcutsProps {
   onRedo?: () => void;
 }
 
+/** True for anything that swallows a keystroke as text or a choice. */
+const isFormField = (target: EventTarget | null) =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement;
+
 export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo, onRedo }: KeyboardShortcutsProps) {
   const [showHelp, setShowHelp] = useState(false);
 
@@ -29,8 +35,9 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo,
         return;
       }
 
-      // Don't trigger shortcuts if typing in input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      // Don't trigger shortcuts while typing. Selects count: the inspector has
+      // several, and Delete over an open one used to delete the whole node.
+      if (isFormField(e.target)) {
         return;
       }
 
@@ -61,7 +68,7 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo,
 
       // Delete key
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (!(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+        if (!isFormField(e.target)) {
           e.preventDefault();
           // Small delay to ensure selection state is updated
           setTimeout(() => {

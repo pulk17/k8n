@@ -49,7 +49,7 @@ export default function DevModeIndicator() {
     const hasIssues = apiStatus === 'disconnected' || dbStatus === 'disconnected' || k8sStatus === 'disconnected';
 
     return (
-      <div className="fixed bottom-36 right-4 z-50">
+      <div className="fixed bottom-36 right-[calc(var(--dock-width,0px)+1rem)] z-50">
         <button
           onClick={() => setIsExpanded(true)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg shadow-lg backdrop-blur-md transition-all ${
@@ -70,7 +70,7 @@ export default function DevModeIndicator() {
 
   // Expanded view
   return (
-    <div className="fixed bottom-36 right-4 z-50 bg-black/90 backdrop-blur-md text-white rounded-xl shadow-2xl border border-gray-700 overflow-hidden">
+    <div className="fixed bottom-36 right-[calc(var(--dock-width,0px)+1rem)] z-50 bg-black/90 backdrop-blur-md text-white rounded-xl shadow-2xl border border-gray-700 overflow-hidden">
       <div className="bg-purple-600 px-3 py-1.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Code2 className="w-4 h-4" />

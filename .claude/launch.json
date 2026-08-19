@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "k8n-api",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "-C", "apps/api", "."],
+      "port": 8080
+    },
+    {
+      "name": "k8n-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace=apps/web"],
+      "port": 3000
+    }
+  ]
+}

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import ReactFlow, {
   Background,
   BackgroundVariant,
   Connection,
   Controls,
+  Edge,
+  Node,
   NodeTypes,
   Panel,
   ReactFlowInstance,
@@ -18,18 +19,21 @@ import "reactflow/dist/style.css";
 import { useCanvasStore } from "../../store/canvasStore";
 import K8sNode from "../../components/K8sNode";
 import ResourceToolbox from "../../components/ResourceToolbox";
+import CanvasToolbar, { ApplyState } from "../../components/CanvasToolbar";
+import Inspector, { INSPECTOR_WIDTH } from "../../components/Inspector";
 import HelmDashboard from "../../components/HelmDashboard";
 import HelmReleaseManager from "../../components/HelmReleaseManager";
 import WorkflowManager from "../../components/WorkflowManager";
 import KeyboardShortcuts from "../../components/KeyboardShortcuts";
 import DevModeIndicator from "../../components/DevModeIndicator";
-import PodMetricsPanel from "../../components/PodMetricsPanel";
 import ApiConnectionError from "../../components/ApiConnectionError";
-import { AlertCircle, CheckCircle2, Eye, FolderOpen, HelpCircle, Loader2, Play, RefreshCw, Save, X, FileCode } from "lucide-react";
+import GraphChecks from "../../components/GraphChecks";
+import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
 import { ApiError, CompileResult, applyYaml, compileGraph, errorMessage, installHelmChart, watchResources } from "../../lib/api";
 import { isValidConnection, validTargetsFor } from "../../lib/connections";
 import { defaultsForKind } from "../../lib/nodeSchema";
-import { makeNode, nodeId } from "../../lib/graph";
+import { makeNode, nodeId, NodeData } from "../../lib/graph";
+import { checkGraph, issuesByNode } from "../../lib/graphChecks";
 import { notify, notifyError } from "../../lib/dialog";
 import YamlPreview from "../../components/YamlPreview";
 import AIPanel from "../../components/AIPanel";
@@ -38,22 +42,25 @@ const nodeTypes: NodeTypes = {
   k8sNode: K8sNode,
 };
 
-type ApplyState = "idle" | "dry-running" | "applying" | "success" | "error";
-
-// The resource toolbox floats over the left edge of the canvas, so fitView —
-// which centres in the full viewport — used to tuck the leftmost nodes
-// underneath it. Everything is nudged right by half that width instead.
+// The toolbox floats over the left edge of the canvas and the inspector over
+// the right, so fitView — which centres in the full viewport — used to tuck the
+// leftmost nodes underneath the toolbox. The fit is computed against the strip
+// that is actually visible between the two instead.
 const TOOLBOX_WIDTH = 292;
 
 function CanvasPageContent() {
-  const { 
-    nodes, 
-    edges, 
+  const {
+    nodes,
+    edges,
     activeNamespace,
     namespaces,
     graphName,
     setGraphName,
     setActiveNamespace,
+    showPods,
+    setShowPods,
+    showSystemNamespaces,
+    setShowSystemNamespaces,
     loading,
     error,
     selectedNodeId,
@@ -84,9 +91,10 @@ function CanvasPageContent() {
   const [showPreview, setShowPreview] = useState(false);
   const [applyState, setApplyState] = useState<ApplyState>("idle");
   const [errors, setErrors] = useState<{ resource: string; message: string }[]>([]);
-  const [selectedPod, setSelectedPod] = useState<{ name: string; namespace: string } | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
 
   const applying = applyState === "dry-running" || applyState === "applying";
+  const inspectorOpen = Boolean(selectedNodeId || selectedEdge);
 
   // Warn before losing unsaved work. `dirty` used to be tracked and never read.
   useEffect(() => {
@@ -139,11 +147,11 @@ function CanvasPageContent() {
   const handleLoadWorkflow = (type: "new" | "example" | "cluster" | "saved") => {
     setShowWorkflowManager(false);
 
-    if (type === 'new') {
+    if (type === "new") {
       clearCanvas();
-    } else if (type === 'example') {
+    } else if (type === "example") {
       useCanvasStore.getState().createStarterWorkflow();
-    } else if (type === 'cluster') {
+    } else if (type === "cluster") {
       hydrateGraph();
     }
     // 'saved' is already loaded by WorkflowManager.
@@ -158,6 +166,44 @@ function CanvasPageContent() {
     const nodeIds = new Set(filteredNodes.map(n => n.id));
     return edges.filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
   }, [edges, filteredNodes]);
+
+  // Runs on every graph change. Cheap, and never touches the cluster — the
+  // point is to catch a Service that selects nothing before it is applied,
+  // not after.
+  const issues = useMemo(
+    () => checkGraph(filteredNodes as Node<NodeData>[], filteredEdges),
+    [filteredNodes, filteredEdges]
+  );
+
+  // The cards get a badge for their own issues. Carried as a count and a
+  // summary string rather than the objects themselves, so lib/graph does not
+  // have to know the check types exist.
+  const displayNodes = useMemo(() => {
+    const byNode = issuesByNode(issues);
+    if (byNode.size === 0) return filteredNodes;
+    return filteredNodes.map(node => {
+      const found = byNode.get(node.id);
+      if (!found) return node;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          issueCount: found.length,
+          issueSummary: found.map(i => i.title).join("\n"),
+        },
+      };
+    });
+  }, [filteredNodes, issues]);
+
+  const selectNode = useCallback((id: string) => {
+    useCanvasStore.setState({ selectedNodeId: id });
+    setSelectedEdge(null);
+  }, []);
+
+  const closeInspector = useCallback(() => {
+    useCanvasStore.setState({ selectedNodeId: null });
+    setSelectedEdge(null);
+  }, []);
 
   /**
    * Rejects a connection while it is still being dragged, so the line simply
@@ -195,23 +241,35 @@ function CanvasPageContent() {
   }, [nodes]);
 
   const handleRefreshWorkflow = useCallback(() => {
-    if (nodes.some(n => n.data.origin === 'cluster')) {
+    if (nodes.some(n => n.data.origin === "cluster")) {
       hydrateGraph();
     } else {
       notify("This workflow was built on the canvas — nothing to refresh from the cluster.");
     }
   }, [nodes, hydrateGraph]);
 
+  /** The strip of canvas not covered by the toolbox or the inspector. */
+  const visibleCanvas = useCallback(() => {
+    const container = reactFlowWrapper.current;
+    if (!container) return null;
+    const right = inspectorOpen ? INSPECTOR_WIDTH : 0;
+    return {
+      left: TOOLBOX_WIDTH,
+      width: container.clientWidth - TOOLBOX_WIDTH - right,
+      height: container.clientHeight,
+    };
+  }, [inspectorOpen]);
+
   /**
-   * Frames the graph in the part of the canvas the toolbox is not covering.
-   * fitView on its own centres in the full viewport, which tucked the leftmost
-   * nodes underneath the toolbox, so the fit is computed against the visible
-   * width and then shifted back past it.
+   * Frames the graph in the part of the canvas nothing is covering. fitView on
+   * its own centres in the full viewport, which tucked the leftmost nodes
+   * underneath the toolbox, so the fit is computed against the visible width
+   * and then shifted back past it.
    */
   const frameGraph = useCallback(() => {
     const flow = reactFlowInstance;
-    const container = reactFlowWrapper.current;
-    if (!flow || !container) return;
+    const area = visibleCanvas();
+    if (!flow || !area) return;
 
     // Node sizes are only known once React Flow has measured them, and a fresh
     // graph is not measured in the same tick it is set. Without waiting, the
@@ -222,19 +280,18 @@ function CanvasPageContent() {
       return;
     }
 
-    const visibleWidth = container.clientWidth - TOOLBOX_WIDTH;
-    if (visibleWidth < 200) return;
+    if (area.width < 200) return;
 
     const [x, y, zoom] = getTransformForBounds(
       getRectOfNodes(current),
-      visibleWidth,
-      container.clientHeight,
+      area.width,
+      area.height,
       0.2,
       1.5,
       0.12
     );
-    flow.setViewport({ x: x + TOOLBOX_WIDTH, y, zoom }, { duration: 200 });
-  }, [reactFlowInstance]);
+    flow.setViewport({ x: x + area.left, y, zoom }, { duration: 200 });
+  }, [reactFlowInstance, visibleCanvas]);
 
   // Reframe when the graph is replaced wholesale, not on every edit.
   useEffect(() => {
@@ -257,8 +314,9 @@ function CanvasPageContent() {
   const handleDeleteSelected = useCallback(() => {
     if (selectedNodeId) {
       deleteNode(selectedNodeId);
+      closeInspector();
     }
-  }, [selectedNodeId, deleteNode]);
+  }, [selectedNodeId, deleteNode, closeInspector]);
 
   /** Compiles the graph and opens the preview; nothing reaches the cluster yet. */
   const handlePreview = useCallback(async () => {
@@ -277,6 +335,13 @@ function CanvasPageContent() {
       setCompiling(false);
     }
   }, [filteredNodes, filteredEdges]);
+
+  // One entry point to the cluster. The preview is the only place Apply lives,
+  // so there is no path that skips the review and the dry run.
+  const handleReviewAndApply = useCallback(() => {
+    if (compiled) setShowPreview(true);
+    else handlePreview();
+  }, [compiled, handlePreview]);
 
   /** Dry-runs, then applies, the YAML the user just reviewed. */
   const handleApply = useCallback(async () => {
@@ -337,6 +402,60 @@ function CanvasPageContent() {
     }
   }, [compiled, filteredNodes]);
 
+  /** Builds a node of `kind` at a position on the canvas. */
+  const createNode = useCallback((kind: string, position: { x: number; y: number }, chart?: {
+    name: string; description: string; repository?: { name: string; url: string };
+  } | null) => {
+    const name = chart ? chart.name : `${kind.toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`;
+    const node = makeNode(nodeId(kind), kind, name, activeNamespace === "all" ? "default" : activeNamespace, {
+      ...defaultsForKind(kind),
+      ...(chart && {
+        status: "Ready to Install",
+        chart: {
+          name: chart.name,
+          description: chart.description,
+          repository: chart.repository?.name || "",
+          repositoryUrl: chart.repository?.url || "",
+        },
+        valuesYaml: "",
+      }),
+    });
+    node.position = position;
+    addNode(node);
+  }, [activeNamespace, addNode]);
+
+  /**
+   * Adds a resource without dragging — the toolbox rows are buttons too, so
+   * there is a keyboard path onto the canvas. It lands in the middle of the
+   * visible strip rather than the middle of the window, which would be under
+   * the inspector whenever one is open.
+   *
+   * Dropping it straight on the centre put it on top of whatever was already
+   * there, so it steps diagonally until it finds clear space. Cards are about
+   * 280x150, and stepping by less than that only half-hides the one beneath.
+   */
+  const addAtCentre = useCallback((kind: string) => {
+    const area = visibleCanvas();
+    if (!reactFlowInstance || !area) return;
+
+    const position = reactFlowInstance.project({
+      x: area.left + area.width / 2,
+      y: area.height / 2,
+    });
+
+    const clashes = (x: number, y: number) =>
+      nodes.some(n => Math.abs(n.position.x - x) < 300 && Math.abs(n.position.y - y) < 170);
+
+    // Bounded so a busy canvas cannot spin here; after ten steps it is far
+    // enough away to be visible regardless.
+    for (let step = 0; step < 10 && clashes(position.x, position.y); step++) {
+      position.x += 40;
+      position.y += 60;
+    }
+
+    createNode(kind, position);
+  }, [reactFlowInstance, visibleCanvas, createNode, nodes]);
+
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
@@ -361,189 +480,71 @@ function CanvasPageContent() {
       }
     }
 
-    const name = chart ? chart.name : `${kind.toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`;
-    const node = makeNode(nodeId(kind), kind, name, activeNamespace === "all" ? "default" : activeNamespace, {
-      ...defaultsForKind(kind),
-      ...(chart && {
-        status: "Ready to Install",
-        chart: {
-          name: chart.name,
-          description: chart.description,
-          repository: chart.repository?.name || "",
-          repositoryUrl: chart.repository?.url || "",
-        },
-        valuesYaml: "",
-      }),
-    });
-
-    node.position = reactFlowInstance.project({
+    createNode(kind, reactFlowInstance.project({
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
-    });
-
-    addNode(node);
-  }, [reactFlowInstance, activeNamespace, addNode]);
+    }), chart);
+  }, [reactFlowInstance, createNode]);
 
   if (loading && nodes.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-neutral-950">
-        <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
-        <p className="text-gray-600 dark:text-gray-400 font-medium">Loading cluster graph...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-950">
+        <Loader2 className="mb-4 h-12 w-12 animate-spin text-blue-500" />
+        <p className="font-medium text-gray-400">Loading cluster graph…</p>
       </div>
     );
   }
 
   if (error && nodes.length === 0) {
-    // Check if it's an API connection error
-    if (error.includes('Cannot connect to API server')) {
+    if (error.includes("Cannot connect to API server")) {
       return <ApiConnectionError error={error} onRetry={hydrateGraph} />;
     }
-    
+
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-neutral-950">
-        <div className="bg-white dark:bg-neutral-900 border border-red-200 dark:border-red-900/50 rounded p-8 max-w-md">
-          <h2 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">Connection Error</h2>
-          <p className="text-gray-700 dark:text-gray-300 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.href = "/connect"}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded transition-colors"
+      <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-950">
+        <div className="max-w-md rounded-lg border border-red-900/50 bg-neutral-900 p-8">
+          <h2 className="mb-2 text-xl font-bold text-red-400">Connection Error</h2>
+          <p className="mb-4 text-gray-300">{error}</p>
+          <a
+            href="/connect"
+            className="block w-full rounded bg-blue-600 px-4 py-2 text-center font-medium text-white transition-colors hover:bg-blue-700"
           >
             Go to Connect Page
-          </button>
+          </a>
         </div>
       </div>
     );
   }
+
   return (
-    <div className="w-full h-screen relative bg-gray-50 dark:bg-neutral-950 overflow-hidden">
-      {/* ComfyUI-style Top Menu Bar */}
-      <div className="absolute top-0 left-0 right-0 h-12 bg-neutral-900 border-b border-neutral-800 z-40 flex items-center justify-between px-4">
-        {/* Left: Logo and Workflow Name */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
-              <span className="text-white font-bold text-sm">k8n</span>
-            </div>
-            <input 
-              type="text" 
-              value={graphName}
-              onChange={(e) => setGraphName(e.target.value)}
-              className="text-sm font-medium bg-neutral-800 border border-neutral-700 focus:border-blue-500 rounded px-3 py-1 w-48 text-gray-100 placeholder-gray-500 outline-none"
-              placeholder="Workflow name..."
-            />
-          </div>
-        </div>
+    // --dock-width is how everything anchored to the right edge — the AI panel,
+    // the dev indicator, the zoom controls — keeps clear of the inspector
+    // without any of them having to know the inspector exists.
+    <div
+      className="relative h-screen w-full overflow-hidden bg-neutral-950"
+      style={{ "--dock-width": inspectorOpen ? `${INSPECTOR_WIDTH}px` : "0px" } as React.CSSProperties}
+    >
+      <CanvasToolbar
+        graphName={graphName}
+        onGraphNameChange={setGraphName}
+        dirty={dirty}
+        applyState={applyState}
+        busy={compiling || applying}
+        canApply={filteredNodes.length > 0}
+        onOpenWorkflows={() => setShowWorkflowManager(true)}
+        onSave={handleSave}
+        onRefresh={handleRefreshWorkflow}
+        onReviewAndApply={handleReviewAndApply}
+        namespaces={namespaces}
+        activeNamespace={activeNamespace}
+        onNamespaceChange={setActiveNamespace}
+        showPods={showPods}
+        onShowPodsChange={setShowPods}
+        showSystemNamespaces={showSystemNamespaces}
+        onShowSystemNamespacesChange={setShowSystemNamespaces}
+      />
 
-        {/* Center: Main Actions */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowWorkflowManager(true)}
-            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded text-sm font-medium text-gray-300 transition-colors flex items-center gap-2"
-            title="Workflow Manager"
-          >
-            <FolderOpen className="w-4 h-4" />
-            Workflows
-          </button>
-
-          <button
-            onClick={handleSave}
-            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded text-sm font-medium text-gray-300 transition-colors flex items-center gap-2"
-            title="Save Workflow (Ctrl+S)"
-          >
-            <Save className="w-4 h-4" />
-            Save
-          </button>
-
-          <button
-            onClick={handleRefreshWorkflow}
-            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded text-sm font-medium text-gray-300 transition-colors flex items-center gap-2"
-            title="Refresh from Cluster (Ctrl+R)"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
-
-          <button
-            onClick={handlePreview}
-            disabled={compiling || applying || filteredNodes.length === 0}
-            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded text-sm font-medium text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            title="Compile the graph and review the YAML"
-          >
-            {compiling ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCode className="w-4 h-4" />}
-            Preview YAML
-          </button>
-
-          <button
-            onClick={() => (compiled ? setShowPreview(true) : handlePreview())}
-            disabled={applying || compiling || filteredNodes.length === 0}
-            className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            title="Review, dry-run, then apply"
-          >
-            {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {applyState === "dry-running"
-              ? "Validating..."
-              : applyState === "applying"
-              ? "Applying..."
-              : "Apply to Cluster"}
-          </button>
-
-          {applyState === "success" && (
-            <div className="flex items-center gap-1.5 text-green-400 px-2">
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="text-xs font-medium">Applied!</span>
-            </div>
-          )}
-
-          {dirty && (
-            <span
-              className="flex items-center gap-1.5 px-1 text-[10px] text-amber-400/90"
-              title="You have unsaved changes"
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              unsaved
-            </span>
-          )}
-        </div>
-
-        {/* Right: Namespace, View Options, Help */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded">
-            <span className="text-xs font-medium text-gray-400">Scope:</span>
-            <select 
-              className="text-sm bg-transparent border-none text-gray-300 outline-none cursor-pointer"
-              value={activeNamespace}
-              onChange={(e) => setActiveNamespace(e.target.value)}
-              aria-label="View and apply namespace scope"
-              title="Only resources in this scope are shown, previewed, and applied"
-            >
-              <option value="all">All</option>
-              {namespaces.map(ns => (
-                <option key={ns} value={ns}>{ns}</option>
-              ))}
-            </select>
-          </div>
-
-          <Link
-            href="/deployed"
-            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded text-sm font-medium text-gray-300 transition-colors flex items-center gap-2"
-            title="View Deployed Resources"
-          >
-            <Eye className="w-4 h-4" />
-            Deployed
-          </Link>
-
-          <Link
-            href="/help"
-            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded text-sm font-medium text-gray-300 transition-colors flex items-center gap-2"
-            title="Help & Instructions"
-          >
-            <HelpCircle className="w-4 h-4" />
-            Help
-          </Link>
-        </div>
-      </div>
-
-      <ResourceToolbox />
+      <ResourceToolbox onAdd={addAtCentre} />
       <HelmDashboard />
       <HelmReleaseManager />
       <KeyboardShortcuts
@@ -556,38 +557,39 @@ function CanvasPageContent() {
       <DevModeIndicator />
       <AIPanel />
 
-      {/* API / Cluster connection error banner */}
+      {/* Keyed on the selection so a different resource gets a fresh panel —
+          which is what resets the tab and reloads the live figures. */}
+      {inspectorOpen && (
+        <Inspector
+          key={selectedNodeId ?? selectedEdge?.id ?? "none"}
+          selectedEdge={selectedEdge}
+          issues={issues.filter(i => i.nodeId === selectedNodeId)}
+          onClose={closeInspector}
+        />
+      )}
+
       {error && (
-        <div className="absolute top-12 left-0 right-0 z-40 bg-red-950/90 border-b border-red-800 px-4 py-2 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-            <span className="text-xs text-red-300 truncate">{error}</span>
+        <div className="absolute inset-x-0 top-12 z-40 flex items-center justify-between gap-3 border-b border-red-800 bg-red-950/90 px-4 py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <AlertCircle className="h-4 w-4 flex-shrink-0 text-red-400" />
+            <span className="truncate text-xs text-red-300">{error}</span>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex flex-shrink-0 items-center gap-2">
             <button
               onClick={hydrateGraph}
-              className="flex items-center gap-1 px-2 py-1 bg-red-800 hover:bg-red-700 text-red-200 text-xs rounded transition-colors"
+              className="flex items-center gap-1 rounded bg-red-800 px-2 py-1 text-xs text-red-200 transition-colors hover:bg-red-700"
             >
-              <RefreshCw className="w-3 h-3" />
+              <RefreshCw className="h-3 w-3" />
               Retry
             </button>
             <a
               href="/connect"
-              className="flex items-center gap-1 px-2 py-1 bg-blue-700 hover:bg-blue-600 text-white text-xs rounded transition-colors"
+              className="flex items-center gap-1 rounded bg-blue-700 px-2 py-1 text-xs text-white transition-colors hover:bg-blue-600"
             >
               Connect to Cluster
             </a>
           </div>
         </div>
-      )}
-
-      {/* Pod Metrics Panel */}
-      {selectedPod && (
-        <PodMetricsPanel
-          podName={selectedPod.name}
-          namespace={selectedPod.namespace}
-          onClose={() => setSelectedPod(null)}
-        />
       )}
 
       {/* YAML preview — the gate between the graph and the cluster */}
@@ -604,61 +606,60 @@ function CanvasPageContent() {
         />
       )}
 
-      {/* Workflow Manager */}
       <WorkflowManager
         isOpen={showWorkflowManager}
         onClose={() => setShowWorkflowManager(false)}
         onLoadWorkflow={handleLoadWorkflow}
       />
 
-      {/* Welcome Screen for empty canvas */}
       {!loading && nodes.length === 0 && !showWorkflowManager && (
-        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none" style={{ marginTop: '48px' }}>
-          <div className="pointer-events-auto">
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center pt-12">
+          <div className="pointer-events-auto max-w-sm text-center">
+            <h2 className="text-lg font-semibold text-gray-200">Nothing on the canvas yet</h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-gray-500">
+              Drag a resource in from the left, import what is already running in your cluster, or
+              start from an example that wires a Deployment, Service and Ingress together.
+            </p>
             <button
               onClick={() => setShowWorkflowManager(true)}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded transition-colors"
+              className="mt-4 rounded bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
             >
-              Open Workflow Manager
+              Open workflow manager
             </button>
           </div>
         </div>
       )}
 
-      {/* Error Panel */}
       {errors.length > 0 && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 w-[500px] max-h-80 overflow-y-auto bg-neutral-900 border-2 border-red-600 rounded-lg z-50 shadow-2xl">
-          <div className="bg-red-950/50 px-4 py-2 border-b border-red-900/30 flex items-center justify-between">
+        <div className="absolute left-1/2 top-16 z-50 max-h-80 w-[500px] -translate-x-1/2 overflow-y-auto rounded-lg border-2 border-red-600 bg-neutral-900 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-red-900/30 bg-red-950/50 px-4 py-2">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400" />
-              <h4 className="text-sm font-semibold text-red-300">Apply Errors</h4>
+              <AlertCircle className="h-4 w-4 text-red-400" />
+              <h4 className="text-sm font-semibold text-red-300">Apply errors</h4>
             </div>
-            <button 
-              onClick={() => setErrors([])} 
+            <button
+              onClick={() => setErrors([])}
+              aria-label="Dismiss errors"
               className="text-red-400 hover:text-red-200"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="p-3 space-y-2">
+          <div className="space-y-2 p-3">
             {errors.map((e, i) => (
-              <div key={i} className="bg-red-950/20 border border-red-900/30 rounded p-2">
-                <div className="text-xs font-semibold text-red-300 mb-1">
-                  Resource: {e.resource}
-                </div>
-                <div className="text-xs text-red-400 font-mono">
-                  {e.message}
-                </div>
+              <div key={i} className="rounded border border-red-900/30 bg-red-950/20 p-2">
+                <div className="mb-1 text-xs font-semibold text-red-300">{e.resource}</div>
+                <div className="font-mono text-xs text-red-400">{e.message}</div>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <div className="w-full h-full pt-12" ref={reactFlowWrapper}>
-        <ReactFlow 
-          nodes={filteredNodes} 
-          edges={filteredEdges} 
+      <div className="h-full w-full pt-12" ref={reactFlowWrapper}>
+        <ReactFlow
+          nodes={displayNodes}
+          edges={filteredEdges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -669,57 +670,35 @@ function CanvasPageContent() {
           onInit={setReactFlowInstance}
           onDrop={onDrop}
           onDragOver={onDragOver}
-          onNodeClick={(event, node) => {
-            // Set selected node for keyboard shortcuts (delete key)
-            useCanvasStore.setState({ selectedNodeId: node.id });
-            
-            // If clicking on a Pod, show metrics panel
-            if (node.data.kind === 'Pod') {
-              setSelectedPod({
-                name: node.data.name,
-                namespace: node.data.namespace || 'default'
-              });
-            } else {
-              setSelectedPod(null);
-            }
-          }}
-          onPaneClick={() => {
-            // Deselect when clicking on empty space
+          onNodeClick={(_, node) => selectNode(node.id)}
+          // Selecting a wire explains the relationship it stands for, which is
+          // the only place the canvas can teach why two objects are separate.
+          onEdgeClick={(_, edge) => {
+            setSelectedEdge(edge);
             useCanvasStore.setState({ selectedNodeId: null });
-            setSelectedPod(null);
           }}
+          onPaneClick={closeInspector}
           minZoom={0.1}
           maxZoom={2}
-          defaultEdgeOptions={{
-            animated: true,
-            style: { stroke: '#3b82f6', strokeWidth: 2 },
-          }}
+          // No defaultEdgeOptions: every edge carries the colour, dash and
+          // animation for its connection type from lib/edges, and a default
+          // blue stroke here only ever misled whoever read it next.
         >
-          <Background 
-            gap={20} 
-            size={1} 
-            color="#e5e7eb" 
-            variant={BackgroundVariant.Dots}
-            className="dark:opacity-20"
-          />
-          <Controls 
+          <Background gap={20} size={1} color="#262626" variant={BackgroundVariant.Dots} />
+          <Controls
             position="bottom-right"
-            className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded shadow-sm"
+            className="overflow-hidden rounded border border-neutral-800 shadow-sm"
+            style={{ right: "calc(var(--dock-width, 0px) + 1rem)" }}
           />
           {nodes.length > 0 && (
-            <Panel
-              position="bottom-center"
-              className="rounded border border-neutral-800 bg-neutral-900/90 px-3 py-1.5 backdrop-blur-sm"
-            >
-              <div className="flex items-center gap-3 whitespace-nowrap text-xs text-gray-400">
-                <span>{filteredNodes.length} {filteredNodes.length === 1 ? "node" : "nodes"}</span>
-                <span className="text-neutral-700">|</span>
-                <span>{filteredEdges.length} {filteredEdges.length === 1 ? "connection" : "connections"}</span>
-                <span className="text-neutral-700">|</span>
-                <span className="text-blue-400">
-                  {activeNamespace === "all" ? "All namespaces" : activeNamespace}
-                </span>
-              </div>
+            <Panel position="bottom-center">
+              <GraphChecks
+                nodeCount={filteredNodes.length}
+                edgeCount={filteredEdges.length}
+                scopeLabel={activeNamespace === "all" ? "All namespaces" : activeNamespace}
+                issues={issues}
+                onSelectNode={selectNode}
+              />
             </Panel>
           )}
         </ReactFlow>
@@ -731,8 +710,8 @@ function CanvasPageContent() {
 export default function CanvasPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950">
-        <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950">
+        <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
       </div>
     }>
       <CanvasPageContent />

@@ -1,16 +1,26 @@
-'use client';
+"use client";
 
 import { memo, useState } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
 import {
   Box, Database, Globe, FileCode, Lock, Layers, Briefcase, Clock, Network,
-  ChevronDown, ChevronUp, CloudDownload, AlertTriangle, LucideIcon,
+  CloudDownload, AlertTriangle, LucideIcon,
 } from "lucide-react";
 import { useCanvasStore } from "../store/canvasStore";
-import { fieldsFor, FieldSpec } from "../lib/nodeSchema";
 import { inputsFor, outputsFor, HandleSpec } from "../lib/connections";
 import { FieldValue, NodeData, fieldValue } from "../lib/graph";
 import { darkStatusStyle } from "../lib/constants";
+
+/**
+ * A resource on the canvas.
+ *
+ * The card used to open into a full edit form in place, which pushed every
+ * other node around the moment you clicked one, and made a graph of six
+ * resources unreadable as soon as two of them were open. Editing moved to the
+ * inspector on the right; what is left here is what you want to read at a
+ * glance while looking at the shape of the graph — name, kind, where it lives,
+ * whether it is healthy, and the one detail that identifies it.
+ */
 
 const iconMap: Record<string, LucideIcon> = {
   Deployment: Box,
@@ -37,10 +47,6 @@ const iconMap: Record<string, LucideIcon> = {
   HorizontalPodAutoscaler: Layers,
   VerticalPodAutoscaler: Layers,
 };
-
-const inputClass =
-  "w-full px-2 py-1 text-xs border border-neutral-700 rounded bg-neutral-800 text-gray-100 " +
-  "focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 // Sockets are laid out in fixed pixel steps from below the header rather than
 // as a percentage of node height: percentages put five handles 13px apart on a
@@ -82,87 +88,7 @@ function NodeHandle({
   );
 }
 
-function Field({
-  spec, value, onChange,
-}: {
-  spec: FieldSpec;
-  value: FieldValue;
-  onChange: (v: FieldValue) => void;
-}) {
-  const label = (
-    <label className="block text-[10px] font-medium text-gray-400 mb-1">{spec.label}</label>
-  );
-  const hint = spec.hint ? (
-    <p className="text-[9px] text-gray-500 mt-1 leading-snug">{spec.hint}</p>
-  ) : null;
-
-  if (spec.type === "checkbox") {
-    return (
-      <div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={value === true}
-            onChange={e => onChange(e.target.checked)}
-            className="w-3.5 h-3.5 accent-blue-500"
-          />
-          <span className="text-[10px] font-medium text-gray-400">{spec.label}</span>
-        </label>
-        {hint}
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      {label}
-      {spec.type === "select" ? (
-        <select
-          value={String(value ?? spec.options?.[0] ?? "")}
-          onChange={e => onChange(e.target.value)}
-          className={inputClass}
-        >
-          {spec.options?.map(opt => (
-            <option key={opt} value={opt}>{opt}</option>
-          ))}
-        </select>
-      ) : spec.type === "textarea" ? (
-        <textarea
-          value={String(value ?? "")}
-          onChange={e => onChange(e.target.value)}
-          placeholder={spec.placeholder}
-          rows={spec.rows ?? 3}
-          className={`${inputClass} font-mono`}
-        />
-      ) : spec.type === "number" ? (
-        <input
-          type="number"
-          min={spec.min}
-          max={spec.max}
-          value={value === undefined ? "" : String(value)}
-          onChange={e => {
-            const raw = e.target.value;
-            onChange(raw === "" ? undefined : Number(raw));
-          }}
-          placeholder={spec.placeholder}
-          className={inputClass}
-        />
-      ) : (
-        <input
-          type="text"
-          value={String(value ?? "")}
-          onChange={e => onChange(e.target.value)}
-          placeholder={spec.placeholder}
-          className={inputClass}
-        />
-      )}
-      {hint}
-    </div>
-  );
-}
-
 export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>) {
-  const [expanded, setExpanded] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState(data.name);
   const updateNodeData = useCanvasStore(state => state.updateNodeData);
@@ -171,15 +97,12 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
   const Icon = iconMap[data.kind] || Box;
   const inputs = inputsFor(data.kind);
   const outputs = outputsFor(data.kind);
-  const fields = fieldsFor(data.kind);
   const isImported = data.origin === "cluster";
-
-  const setField = (key: string, value: FieldValue) => updateNodeData(id, { [key]: value });
 
   const commitName = () => {
     const next = editedName?.trim();
     if (next && next !== data.name) {
-      setField("name", next);
+      updateNodeData(id, { name: next });
     } else {
       setEditedName(data.name);
     }
@@ -188,8 +111,8 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
 
   return (
     <div
-      className={`relative min-w-[280px] max-w-[300px] rounded border bg-neutral-900 transition-colors ${
-        selected ? "border-blue-500 shadow-lg shadow-blue-500/20" : "border-neutral-700"
+      className={`relative min-w-[260px] max-w-[280px] rounded-md border bg-neutral-900 transition-colors ${
+        selected ? "border-blue-500" : "border-neutral-700 hover:border-neutral-600"
       }`}
     >
       {inputs.map((spec, idx) => (
@@ -197,116 +120,76 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
       ))}
 
       <div
-        className="px-3 py-2 border-b border-neutral-800 cursor-pointer hover:bg-neutral-800/50 transition-colors"
-        onClick={() => setExpanded(!expanded)}
-        style={{ backgroundColor: `${data.color}10` }}
+        className="rounded-t-md border-b border-neutral-800 px-3 py-2"
+        style={{ backgroundColor: `${data.color}12` }}
       >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <Icon className="w-4 h-4 flex-shrink-0" style={{ color: data.color }} />
-            <div className="flex flex-col flex-1 min-w-0">
-              {isEditingName ? (
-                <input
-                  type="text"
-                  value={editedName}
-                  onChange={e => setEditedName(e.target.value)}
-                  onBlur={commitName}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") e.currentTarget.blur();
-                    if (e.key === "Escape") {
-                      setEditedName(data.name);
-                      setIsEditingName(false);
-                    }
-                  }}
-                  onClick={e => e.stopPropagation()}
-                  autoFocus
-                  className="text-xs font-semibold bg-neutral-800 text-gray-100 px-1 py-0.5 rounded border border-blue-500 focus:outline-none w-full"
-                />
-              ) : (
-                <span
-                  className="text-xs font-semibold text-gray-100 truncate cursor-text hover:text-blue-400 transition-colors"
-                  onDoubleClick={e => {
-                    e.stopPropagation();
-                    setIsEditingName(true);
+        <div className="flex items-center gap-2">
+          <Icon className="h-4 w-4 flex-shrink-0" style={{ color: data.color }} />
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            {isEditingName ? (
+              <input
+                type="text"
+                value={editedName}
+                onChange={e => setEditedName(e.target.value)}
+                onBlur={commitName}
+                onKeyDown={e => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") {
                     setEditedName(data.name);
-                  }}
-                  title="Double-click to rename"
-                >
-                  {data.name}
-                </span>
-              )}
-              <span className="text-[10px] text-gray-400 font-mono">{data.kind}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {isImported && (
-              <span title="Imported from the cluster — only edited fields are applied">
-                <CloudDownload className="w-3 h-3 text-sky-400" />
+                    setIsEditingName(false);
+                  }
+                }}
+                onClick={e => e.stopPropagation()}
+                autoFocus
+                className="w-full rounded border border-blue-500 bg-neutral-800 px-1 py-0.5 text-xs font-semibold text-gray-100 focus:outline-none"
+              />
+            ) : (
+              <span
+                className="cursor-text truncate text-xs font-semibold text-gray-100 transition-colors hover:text-blue-400"
+                onDoubleClick={e => {
+                  e.stopPropagation();
+                  setIsEditingName(true);
+                  setEditedName(data.name);
+                }}
+                title="Double-click to rename"
+              >
+                {data.name}
               </span>
             )}
-            <div className={`w-2 h-2 rounded-full ${statusStyle.dot}`} title={data.status} />
-            {expanded ? (
-              <ChevronUp className="w-3 h-3 text-gray-400" />
-            ) : (
-              <ChevronDown className="w-3 h-3 text-gray-400" />
-            )}
+            <span className="font-mono text-[10px] text-gray-500">{data.kind}</span>
           </div>
+
+          {/* The graph checks found something wrong with this resource. The
+              summary is the tooltip; the full reason is in the inspector. */}
+          {data.issueCount ? (
+            <span title={data.issueSummary} aria-label={`${data.issueCount} issues`}>
+              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 text-yellow-500" />
+            </span>
+          ) : null}
+
+          {isImported && (
+            <span title="Imported from the cluster — only edited fields are applied">
+              <CloudDownload className="h-3 w-3 flex-shrink-0 text-sky-400" />
+            </span>
+          )}
+          <span
+            className={`h-2 w-2 flex-shrink-0 rounded-full ${statusStyle.dot}`}
+            title={data.statusMessage || data.status}
+          />
         </div>
       </div>
 
-      {expanded ? (
-        <div className="px-3 py-2 space-y-2 text-xs bg-neutral-900 max-h-[420px] overflow-y-auto custom-scrollbar">
-          {isImported && (
-            <div className="flex gap-1.5 px-2 py-1.5 bg-sky-950/30 border border-sky-900/40 rounded">
-              <AlertTriangle className="w-3 h-3 text-sky-400 flex-shrink-0 mt-0.5" />
-              <p className="text-[9px] text-sky-300 leading-snug">
-                Live cluster resource. Applying sends only the fields you change, so the
-                rest of its spec is left untouched.
-              </p>
-            </div>
-          )}
-
-          <Field
-            spec={{ key: "namespace", label: "Namespace", type: "text", placeholder: "default" }}
-            value={data.namespace ?? "default"}
-            onChange={v => setField("namespace", v)}
-          />
-
-          {data.kind === "HelmRelease" && data.chart && (
-            <div>
-              <label className="block text-[10px] font-medium text-gray-400 mb-1">Chart</label>
-              <div className="px-2 py-1 text-xs border border-neutral-700 rounded bg-neutral-800 text-gray-300">
-                {data.chart.repository}/{data.chart.name}
-              </div>
-            </div>
-          )}
-
-          {fields
-            .filter(f => !f.visibleWhen || f.visibleWhen(data))
-            .map(f => (
-              <Field
-                key={f.key}
-                spec={f}
-                value={fieldValue(data, f.key)}
-                onChange={v => setField(f.key, v)}
-              />
-            ))}
-
-          <div className={`px-2 py-1 ${statusStyle.bg} rounded flex items-center gap-2`}>
-            <div className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
-            <span className={`text-[10px] font-medium ${statusStyle.text}`}>{data.status}</span>
-          </div>
+      <div
+        className="flex flex-col justify-center gap-1 rounded-b-md bg-neutral-900 px-3 py-2"
+        style={{ minHeight: nodeMinHeight(inputs.length, outputs.length) - HEADER_HEIGHT }}
+      >
+        <div className="flex items-center justify-between gap-2 text-[10px]">
+          <span className="truncate font-mono text-gray-500">{data.namespace || "default"}</span>
+          <span className={`${statusStyle.text} flex-shrink-0 font-medium`}>{data.status}</span>
         </div>
-      ) : (
-        <div className="flex flex-col justify-center gap-1 bg-neutral-900 px-3 py-2"
-             style={{ minHeight: nodeMinHeight(inputs.length, outputs.length) - HEADER_HEIGHT }}>
-          <div className="flex items-center justify-between text-[10px]">
-            <span className="text-gray-400 font-mono truncate">{data.namespace || "default"}</span>
-            <span className={`${statusStyle.text} font-medium flex-shrink-0`}>{data.status}</span>
-          </div>
-          <Summary data={data} />
-        </div>
-      )}
+        <Summary data={data} />
+      </div>
 
       {outputs.map((spec, idx) => (
         <NodeHandle key={spec.type} spec={spec} index={idx} side="output" />
@@ -315,7 +198,7 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
   );
 });
 
-/** One line of the most useful detail for the collapsed card. */
+/** One line of the most useful detail for the card. */
 function Summary({ data }: { data: NodeData }) {
   const f = (key: string, fallback: FieldValue = "") => fieldValue(data, key) ?? fallback;
 
@@ -347,5 +230,5 @@ function Summary({ data }: { data: NodeData }) {
   })();
 
   if (!line) return null;
-  return <div className="text-[10px] text-gray-400 truncate">{line}</div>;
+  return <div className="truncate text-[10px] text-gray-400">{line}</div>;
 }

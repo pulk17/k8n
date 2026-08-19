@@ -137,6 +137,31 @@ ${helmYaml}` : yaml;
           )}
         </div>
 
+        {/* What this button does, said in the tool everyone else is using.
+            k8n is a front end for the same API, and being explicit about that
+            is the difference between learning Kubernetes here and learning
+            only k8n. */}
+        {hasManifest && (
+          <div className="border-t border-neutral-800 px-4 py-2.5">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              The same thing in kubectl
+            </p>
+            <div className="space-y-1">
+              <CommandLine
+                command="kubectl apply --dry-run=server -f manifest.yaml"
+                note="the validation step"
+              />
+              <CommandLine command="kubectl apply -f manifest.yaml" note="then, if it passed" />
+              {helmYaml && (
+                <CommandLine
+                  command="helm upgrade --install <release> <chart> --repo <url>"
+                  note="charts are installed by Helm, not applied as this YAML"
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-neutral-800">
           <button
             onClick={onClose}
@@ -154,6 +179,16 @@ ${helmYaml}` : yaml;
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** One equivalent command, with a word on which part of Apply it stands for. */
+function CommandLine({ command, note }: { command: string; note: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+      <code className="font-mono text-[11px] text-gray-300">{command}</code>
+      <span className="text-[10px] text-gray-600">— {note}</span>
     </div>
   );
 }

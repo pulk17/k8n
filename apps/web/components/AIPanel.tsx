@@ -160,7 +160,7 @@ export default function AIPanel() {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="absolute bottom-4 right-16 z-30 px-3 py-2 bg-neutral-900/90 hover:bg-neutral-800 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg flex items-center gap-2 text-sm text-gray-200 transition-colors"
+        className="absolute bottom-4 right-[calc(var(--dock-width,0px)+4rem)] z-30 px-3 py-2 bg-neutral-900/90 hover:bg-neutral-800 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg flex items-center gap-2 text-sm text-gray-200 transition-colors"
         title="Ask the k8n assistant"
       >
         <Sparkles className="w-4 h-4 text-blue-400" />
@@ -170,7 +170,7 @@ export default function AIPanel() {
   }
 
   return (
-    <div className="absolute top-16 right-4 bottom-4 z-30 w-96 bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-lg shadow-2xl flex flex-col overflow-hidden">
+    <div className="absolute top-16 right-[calc(var(--dock-width,0px)+1rem)] bottom-4 z-30 w-96 bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-lg shadow-2xl flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-blue-400" />
