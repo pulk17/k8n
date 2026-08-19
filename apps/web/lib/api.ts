@@ -72,9 +72,32 @@ export interface CompileResult {
   notes: CompileNote[];
 }
 
-/** The message to show a user for anything thrown. */
-export const errorMessage = (err: unknown) =>
-  err instanceof Error ? err.message : String(err);
+function formatErrorDetails(details: unknown): string {
+  if (!details) return "";
+  if (typeof details === "string") return details.trim();
+  if (Array.isArray(details)) {
+    return details
+      .map(detail => {
+        if (!detail || typeof detail !== "object") return String(detail);
+        const item = detail as { resource?: string; message?: string };
+        return [item.resource, item.message].filter(Boolean).join(": ");
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  try {
+    return JSON.stringify(details);
+  } catch {
+    return String(details);
+  }
+}
+
+/** The message to show a user for anything thrown, including API hints/details. */
+export const errorMessage = (err: unknown) => {
+  if (!(err instanceof Error)) return String(err);
+  const details = formatErrorDetails((err as Error & { details?: unknown }).details);
+  return details && !err.message.includes(details) ? `${err.message}: ${details}` : err.message;
+};
 
 /** Only a genuine transport failure means the API is unreachable. */
 function isNetworkError(error: unknown): boolean {
@@ -88,9 +111,9 @@ function isNetworkError(error: unknown): boolean {
 
 export class ApiError extends Error {
   status: number;
-  details?: string;
+  details?: unknown;
 
-  constructor(message: string, status: number, details?: string) {
+  constructor(message: string, status: number, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -132,7 +155,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
     if (!res.ok) {
       let message = `${res.status} ${res.statusText}`;
-      let details: string | undefined;
+      let details: unknown;
       const text = await res.text().catch(() => "");
       if (text) {
         try {
