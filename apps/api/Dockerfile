@@ -41,6 +41,12 @@ USER k8n
 
 EXPOSE 8080
 
+# The binary binds loopback by default, because there is no authentication and
+# a laptop should not serve its cluster to the network. In a container that
+# would refuse nginx, which reaches us as api:8080 from its own namespace — the
+# isolation here is the compose network, not the bind address.
+ENV API_HOST=0.0.0.0
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
