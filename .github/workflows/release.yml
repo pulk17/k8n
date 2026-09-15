@@ -1,0 +1,82 @@
+name: Release
+
+# Tag a commit (v0.1.0) and this builds the single-file binaries and attaches
+# them to the release. The frontend is exported as static files and embedded in
+# the Go binary, so each artifact is the whole app — no Node, no Docker.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: apps/api/go.sum
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Export the frontend
+        working-directory: apps/web
+        env:
+          K8N_EXPORT: "1"
+        run: npx next build
+
+      - name: Stage it for embedding
+        run: |
+          rm -rf apps/api/ui
+          cp -r apps/web/out apps/api/ui
+
+      - name: Test
+        working-directory: apps/api
+        run: go test ./...
+
+      - name: Build every target
+        working-directory: apps/api
+        run: |
+          mkdir -p ../../dist
+          for target in windows/amd64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            ext=""
+            [ "$os" = "windows" ] && ext=".exe"
+            echo "building $os/$arch"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -tags embedui -trimpath -ldflags="-s -w" \
+              -o "../../dist/k8n-$os-$arch$ext" .
+            # The stdio MCP server, for AI clients that spawn it directly.
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -trimpath -ldflags="-s -w" \
+              -o "../../dist/k8n-mcp-$os-$arch$ext" ./cmd/k8n-mcp
+          done
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum k8n-* > SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            Download the binary for your system, make it executable, and run it.
+            It prints a link — open that link to pair your browser.
+
+            macOS and Windows will warn that the binary is unsigned: this
+            project has no code-signing certificate. See the README for how to
+            get past that, or build from source.

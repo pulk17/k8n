@@ -7,9 +7,20 @@ Next.js origin and `next.config.ts` proxies `/api/*` and `/mcp/*` through, so
 everything is same-origin and CORS never applies. Set `NEXT_PUBLIC_API_URL` only
 when the API lives on a different host.
 
-There is no authentication. k8n acts with whatever permissions your kubeconfig
-has, so do not expose it beyond your machine without putting something in front
-of it.
+Every `/api/*` and `/mcp*` request needs the pairing token. k8n generates one on
+first start, saves it in `~/.k8n/token`, and prints a link containing it; send it
+as `X-K8n-Token`, as `Authorization: Bearer <token>`, or — for EventSource, which
+cannot set headers — as `?t=<token>`. Without it the answer is `401`. `/health`
+is open, for container healthchecks.
+
+```bash
+curl -H "X-K8n-Token: $(cat ~/.k8n/token)" http://localhost:8080/api/cluster/contexts
+```
+
+The token is pairing, not authentication: everyone holding it has whatever
+permissions your kubeconfig has. `K8N_NO_AUTH=true` disables the check for a
+trusted network behind something that already authenticates — never on a laptop.
+See [SECURITY.md](../SECURITY.md).
 
 ## Conventions
 

@@ -1,518 +1,192 @@
-# k8n - Visual Kubernetes IDE
+# k8n
 
-> A ComfyUI-inspired visual interface for Kubernetes — design, deploy, and manage your cluster with drag-and-drop simplicity.
+A visual Kubernetes IDE that explains itself. Drag resources onto a canvas,
+wire them together, and see the YAML — and the `kubectl` — behind every one of
+them.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
-
-## 🚀 Quick Start
-
-### Development (One Command)
-
-```bash
-npm run dev
-```
-
-Opens at **http://localhost:3000** — Go API on `:8080`, Next.js on `:3000` with hot-reload.
-
-### Production (Docker — One Command)
-
-```bash
-docker-compose -f docker-compose.prod.yml up --build -d
-```
-
-Opens at **http://localhost** — everything behind Nginx on port 80.
-
-### Windows Users
-
-```powershell
-# Development
-.\start.bat
-
-# Production
-.\deploy.ps1
-```
-
----
-
-## 📋 Prerequisites
-
-| Tool | Required For | Install |
-|------|-------------|---------|
-| **Node.js 18+** | Development | [nodejs.org](https://nodejs.org/) |
-| **Go 1.25+** | Development | [golang.org](https://golang.org/dl/) |
-| **air** | Dev hot-reload | `go install github.com/cosmtrek/air@latest` |
-| **Docker** | Production deploy | [docker.com](https://docs.docker.com/get-docker/) |
-| **kubectl** | K8s cluster access | [kubernetes.io](https://kubernetes.io/docs/tasks/tools/) |
-
----
-
-## 🏗️ Project Structure
-
-```
-k8n/
-├── apps/
-│   ├── api/                          # ── Go Backend ──────────────────
-│   │   ├── main.go                   # Entry point: HTTP server, routes, CORS, MCP mount
-│   │   ├── Dockerfile                # Multi-stage build → ~30MB Alpine image
-│   │   ├── .air.toml                 # Hot-reload config for development
-│   │   ├── .dockerignore             # Excludes binaries/tmp from Docker build
-│   │   ├── go.mod / go.sum           # Go module dependencies
-│   │   ├── package.json              # npm scripts: "dev" (air), "build" (go build)
-│   │   └── internal/
-│   │       ├── handlers/
-│   │       │   ├── cluster.go        # GET /api/cluster/resources — fetches Pods, Deployments,
-│   │       │   │                     #   Services, etc. concurrently with 15s timeout
-│   │       │   ├── crd.go            # GET /api/cluster/crds — discovers Custom Resource Definitions
-│   │       │   ├── apply.go          # POST /api/graph/apply — compiles graph → YAML → kubectl apply
-│   │       │   ├── delete.go         # DELETE /api/resource/delete — deletes K8s resources
-│   │       │   ├── graph.go          # CRUD for saved workflow graphs (PostgreSQL)
-│   │       │   ├── helm.go           # Helm chart search configuration
-│   │       │   ├── helm_config.go    # Helm action configuration helper
-│   │       │   ├── helm_install.go   # POST /api/helm/install — installs Helm charts
-│   │       │   ├── helm_releases.go  # Full Helm release lifecycle (list/get/upgrade/rollback/delete)
-│   │       │   ├── compile.go        # POST /api/graph/compile — whole-graph → YAML,
-│   │       │   │                     #   resolving selectors/backends/mounts from edges
-│   │       │   ├── graphmodel.go     # Graph/node/edge model and edge resolver
-│   │       │   ├── logs.go           # GET /api/logs/... and /api/events/...
-│   │       │   ├── diagnose.go       # GET /api/diagnose/:namespace — health checks
-│   │       │   ├── ai.go             # /api/ai/* — assistant transport (SSE)
-│   │       │   ├── aiteam.go         # Supervisor + inspector/architect agents;
-│   │       │   │                     #   compiles a proposal before it is shown
-│   │       │   ├── helm.go           # Helm routes, bound to the active cluster
-│   │       │   ├── metrics.go        # GET /api/metrics/* — pod CPU/memory via metrics-server
-│   │       │   └── schema.go         # GET /api/schema/:kind — OpenAPI schema for resource kinds
-│   │       ├── k8s/
-│   │       │   └── client.go         # K8s client initialization (kubeconfig / in-cluster)
-│   │       ├── ai/
-│   │       │   ├── gemini.go         # Gemini client and tool-calling loop
-│   │       │   └── team.go           # Agents exposed to the supervisor as tools
-│   │       ├── helm/
-│   │       │   └── helm.go           # Helm against the connected cluster, not $KUBECONFIG
-│   │       ├── mcpclient/
-│   │       │   └── client.go         # Tools from external MCP servers (K8N_MCP_SERVERS)
-│   │       └── mcpserver/
-│   │           └── server.go         # MCP tools (stdio via cmd/k8n-mcp, HTTP at /mcp)
-│   │
-│   └── web/                          # ── Next.js Frontend ────────────
-│       ├── Dockerfile                # Multi-stage build → standalone Node.js server
-│       ├── .dockerignore             # Excludes node_modules/.next from Docker build
-│       ├── next.config.ts            # Next.js config (standalone output for Docker)
-│       ├── package.json              # Dependencies: React Flow, Zustand, Monaco Editor
-│       ├── tailwind.config.ts        # Tailwind CSS configuration
-│       ├── tsconfig.json             # TypeScript configuration
-│       ├── app/
-│       │   ├── layout.tsx            # Root layout (fonts, metadata)
-│       │   ├── page.tsx              # Landing page → redirects to /canvas
-│       │   ├── globals.css           # Global styles, Tailwind imports
-│       │   ├── canvas/
-│       │   │   └── page.tsx          # Main IDE canvas — React Flow graph editor
-│       │   ├── connect/
-│       │   │   └── page.tsx          # Cluster connection page — context selection
-│       │   ├── deployed/
-│       │   │   └── page.tsx          # Deployed resources viewer — live cluster state
-│       │   └── help/
-│       │       └── page.tsx          # Help & keyboard shortcuts reference
-│       ├── components/
-│       │   ├── K8sNode.tsx           # Core: visual node for each K8s resource type
-│       │   ├── Dialogs.tsx           # Toasts and confirm dialog (mounted once in layout)
-│       │   ├── YamlPreview.tsx       # Review the compiled YAML before it reaches the cluster
-│       │   ├── AIPanel.tsx           # Gemini assistant; proposes graph patches you accept
-│       │   ├── ResourceToolbox.tsx   # Sidebar: draggable resource palette
-│       │   ├── WorkflowManager.tsx   # Modal: save/load/import/export workflows
-│       │   ├── HelmDashboard.tsx     # Panel: search and install Helm charts
-│       │   ├── HelmReleaseManager.tsx# Panel: manage installed Helm releases
-│       │   ├── PodMetricsPanel.tsx   # Panel: real-time CPU/memory for a pod
-│       │   ├── ResourceMonitoringDashboard.tsx  # Dashboard: resource metrics overview
-│       │   ├── KeyboardShortcuts.tsx # Modal: keyboard shortcuts help
-│       │   ├── ApiConnectionError.tsx# Error state: API unreachable
-│       │   └── DevModeIndicator.tsx  # Dev: shows development mode banner
-│       ├── lib/
-│       │   ├── api.ts               # API client: shared request helper and every endpoint
-│       │   ├── ai.ts                # SSE client for the assistant
-│       │   ├── connections.ts       # Single source of truth for what connects to what
-│       │   ├── constants.ts         # Resource colors, type definitions
-│       │   ├── dialog.ts            # notify() / confirmAction() — replaces alert/confirm
-│       │   ├── dockerfile.ts        # Sketches a workflow from a Dockerfile
-│       │   ├── edges.ts             # Derives edges from real cluster references
-│       │   ├── graph.ts             # NodeData type; makeNode/makeEdge used everywhere
-│       │   ├── layout.ts            # Dagre auto-layout for graph nodes
-│       │   ├── nodeSchema.ts        # Per-kind editor fields and drop-in defaults
-│       │   ├── templates.ts         # Starter workflow templates (Nginx, Redis, etc.)
-│       │   └── workflows.ts         # Saving: Postgres when present, browser otherwise
-│       └── store/
-│           └── canvasStore.ts       # Zustand store: nodes, edges, undo/redo, selection
-│
-├── deploy/
-│   ├── aws/
-│   │   ├── main.tf                  # Terraform: VPC, ALB, ECS Fargate, RDS PostgreSQL
-│   │   └── deploy.sh               # Automated: build → push → terraform apply
-│   └── docker/
-│       └── nginx.conf               # Nginx reverse proxy: routes /api/* → API, /* → Web
-│
-├── docs/
-│   ├── API.md                       # REST API and MCP reference
-│   └── graph-schema.json            # JSON schema for workflow graph format
-│
-├── docker-compose.yml               # Development: PostgreSQL only
-├── docker-compose.prod.yml          # Production: Nginx + API + Web + PostgreSQL
-├── deploy.ps1                       # Windows PowerShell deployment script
-├── init-db.sql                      # Database schema (graphs table)
-├── .env.example                     # Environment variables template
-├── package.json                     # Turborepo root: workspaces, dev/build/lint
-├── turbo.json                       # Turborepo pipeline configuration
-├── start.bat                        # Windows: start dev environment
-├── start.sh                         # Linux/Mac: start dev environment
-├── stop.sh                          # Linux/Mac: stop background processes
-└── README.md                        # This file
-```
-
----
-
-## 🖥️ Development Setup
-
-### First Time
-
-```bash
-# 1. Clone
-git clone https://github.com/yourusername/k8n.git && cd k8n
-
-# 2. Install dependencies
-npm install
-
-# 3. Install Go hot-reload tool
-go install github.com/cosmtrek/air@latest
-
-# 4. Create environment file
-cp .env.example .env
-
-# 5. (Optional) Start database for workflow persistence
-docker-compose up -d
-
-# 6. Start everything
-npm run dev
-```
-
-### Daily Development
-
-```bash
-npm run dev          # Starts API + Frontend with hot-reload
-```
-
-| Service | URL | Hot-reload |
-|---------|-----|-----------|
-| Frontend | http://localhost:3000 | ✅ via Turbopack |
-| API | http://localhost:8080 | ✅ via air |
-| Database | localhost:5432 | N/A |
-
-### Manual Start (Two Terminals)
-
-```bash
-# Terminal 1 — Backend
-cd apps/api && air
-
-# Terminal 2 — Frontend
-cd apps/web && npm run dev
-```
-
----
-
-## 🐳 Deployment
-
-### Option 1: Docker Compose (Recommended)
-
-Deploy the entire stack with a single command:
-
-```bash
-docker-compose -f docker-compose.prod.yml up --build -d
-```
-
-This starts:
-- **Nginx** — reverse proxy on port 80
-- **Go API** — backend on internal port 8080
-- **Next.js** — frontend on internal port 3000
-- **PostgreSQL** — database on port 5432
-
-Access at **http://localhost**.
-
-#### Windows (PowerShell)
-
-```powershell
-# Deploy
-.\deploy.ps1
-
-# Deploy with custom DB password
-.\deploy.ps1 -DbPassword "my-secure-password"
-
-# Deploy on custom port
-.\deploy.ps1 -Port 8888
-
-# Rebuild everything from scratch
-.\deploy.ps1 -Rebuild
-
-# Tear down
-.\deploy.ps1 -Teardown
-```
-
-#### Linux/Mac (Bash)
-
-```bash
-# Deploy
-POSTGRES_PASSWORD=secure123 docker-compose -f docker-compose.prod.yml up --build -d
-
-# Tear down
-docker-compose -f docker-compose.prod.yml down -v
-```
-
-#### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `POSTGRES_PASSWORD` | `k8npassword` | PostgreSQL password |
-| `KUBECONFIG_PATH` | `~/.kube` | Path to kubeconfig on host |
-| `K8N_PORT` | `80` | Port to expose k8n on |
-| `ALLOWED_ORIGINS` | localhost | Extra CORS origins (comma-separated) |
-| `NEXT_PUBLIC_API_URL` | (empty) | Leave empty — the browser calls Next.js, which proxies to the API |
-| `API_BACKEND_URL` | `http://localhost:8080` | Where Next.js forwards `/api/*` |
-| `GEMINI_API_KEY` | (empty) | Enables the AI assistant; hidden when unset |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Model used by the assistant |
-| `K8N_MCP_READONLY` | `false` | Drop the MCP write tools |
-
-### Option 2: AWS (ECS Fargate)
-
-Full Terraform setup in `deploy/aws/`:
-
-```bash
-cd deploy/aws
-terraform init
-terraform apply -var="db_password=secure-password"
-```
-
-Or use the automated script:
-
-```bash
-chmod +x deploy/aws/deploy.sh
-./deploy/aws/deploy.sh us-east-1 "secure-password"
-```
-
-See [deploy/aws/main.tf](deploy/aws/main.tf) for full infrastructure details (VPC, ALB, ECS, RDS).
-
-### Option 3: Any Server with Docker
-
-```bash
-# On your server
-git clone https://github.com/yourusername/k8n.git && cd k8n
-docker-compose -f docker-compose.prod.yml up --build -d
-```
-
-Works on any machine with Docker installed — EC2, DigitalOcean, Hetzner, etc.
-
----
-
-## ⚡ Features
-
-### Visual Canvas
-- **Drag & Drop** — add Deployments, Services, ConfigMaps from a toolbox
-- **Smart Connections** — color-coded edges show resource relationships
-- **Auto-Layout** — Dagre-powered automatic node arrangement
-- **Real-Time Status** — live resource health indicators (Running/Pending/Failed)
-- **Pod Metrics** — click any pod for real-time CPU/Memory graphs
-
-### Cluster Integration
-- **Multi-Context** — connect to any kubectl context
-- **Live Import** — load existing cluster resources onto canvas
-- **One-Click Deploy** — apply changes directly to your cluster
-- **Namespace Filtering** — focus on specific namespaces
-- **HPA Support** — auto-scaling with `autoscaling/v2`
-
-### Helm Integration
-- **Chart Search** — browse and search Helm charts
-- **Visual Deploy** — add Helm releases as canvas nodes
-- **Full Lifecycle** — upgrade, rollback, uninstall from the UI
-
-### Workflow Management
-- **Save & Load** — persist workflows to PostgreSQL
-- **Templates** — starter workflows (Nginx, Redis, etc.)
-- **Export/Import** — share workflows as JSON
-- **Undo/Redo** — `Ctrl+Z` history
-- **Preview before apply** — compile the graph, read the manifest, dry-run, then apply
-
-### AI Assistant (optional)
-- **Ask about your cluster** — reads resources, logs and events to answer questions
-- **Diagnose** — deterministic checks for crash loops, image pull failures, OOM
-  kills, unschedulable pods, unbound volumes, and Services whose selector matches
-  no pods — then explains the cause
-- **Propose changes** — the assistant edits the *graph*, not YAML; you accept or
-  reject each proposal, and nothing reaches the cluster without your apply
-
-Set `GEMINI_API_KEY` to enable it. Without a key the AI surfaces are hidden and
-the rest of k8n is unchanged.
-
-### MCP Server
-k8n speaks the [Model Context Protocol](https://modelcontextprotocol.io), so
-Claude Code, Claude Desktop and other MCP clients can drive your cluster through
-the same validated paths the UI uses.
-
-```bash
-# Build the stdio server
-cd apps/api && go build -o k8n-mcp ./cmd/k8n-mcp
-
-# Register it with Claude Code
-claude mcp add k8n -- /absolute/path/to/k8n-mcp
-```
-
-A running k8n also serves MCP over streamable HTTP at `/mcp`.
-
-| Tool | |
-|---|---|
-| `list_contexts`, `use_context` | kubeconfig contexts |
-| `list_resources` | resources with status and their references |
-| `get_logs` | pod logs (`previous: true` for crash loops) |
-| `get_events` | events for a namespace or object |
-| `diagnose` | the health checks described above |
-| `compile_graph` | graph → YAML, no cluster needed |
-| `apply_yaml` | server-side apply — **dry-run by default** |
-| `delete_resource` | delete (refuses protected system resources) |
-
-`apply_yaml` only makes a real change when explicitly passed `dryRun: false`.
-Set `K8N_MCP_READONLY=true` to drop the write tools entirely — recommended for
-anything reachable beyond localhost.
-
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+S` | Save workflow |
-| `Ctrl+R` | Refresh from cluster |
-| `Ctrl+Z` | Undo |
-| `Delete` | Remove selected node |
-| `?` | Show keyboard shortcuts |
-
----
-
-## 🔧 Architecture
-
-```
-┌─────────────────────────────────────────────┐
-│                  Browser                     │
-│  ┌─────────────────────────────────────┐    │
-│  │  Next.js 16 (React 19 + React Flow) │    │
-│  │  Zustand State · Monaco Editor      │    │
-│  └──────────────┬──────────────────────┘    │
-└─────────────────┼───────────────────────────┘
-                  │ HTTP/REST
-┌─────────────────┼───────────────────────────┐
-│  Nginx (prod)   │                            │
-│  ┌──────────────▼──────────────────────┐    │
-│  │  Go API (Gin)                        │    │
-│  │  ├── Cluster handlers (concurrent)   │    │
-│  │  ├── Helm SDK integration            │    │
-│  │  ├── Graph persistence (PostgreSQL)  │    │
-│  │  └── Metrics aggregation             │    │
-│  └──────┬──────────────┬───────────────┘    │
-│         │              │                     │
-│  ┌──────▼─────┐  ┌─────▼────────┐           │
-│  │ PostgreSQL  │  │ K8s API      │           │
-│  │ (graphs)    │  │ (client-go)  │           │
-│  └─────────────┘  └──────────────┘           │
-└──────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 16, React 19, React Flow, Zustand, Tailwind CSS, Monaco (YAML preview) |
-| Backend | Go 1.25+, Gin, client-go, Helm SDK |
-| AI | Google Gemini (`google.golang.org/genai`), optional |
-| Agents | MCP server (`modelcontextprotocol/go-sdk`), stdio + streamable HTTP |
-| Database | PostgreSQL 15 |
-| DevOps | Docker, Nginx, Terraform, Turborepo |
-
-### How the graph compiles
-
-The canvas is compiled server-side in one pass (`POST /api/graph/compile`), so
-edges resolve into real Kubernetes references rather than guesses:
+![A Helm chart drawn as the resources it installs](docs/images/helm-chart.png)
+
+k8n is not a YAML generator with a nice skin. The lines between cards are real:
+the whole graph is compiled server-side in one pass, so an edge resolves into an
+actual Kubernetes reference rather than a guess.
 
 | Edge | Becomes |
 |---|---|
-| `Service → workload` | the Service's `selector` (and `targetPort` from the container) |
+| `Service → workload` | the Service's `selector`, and `targetPort` from the container |
 | `Ingress → Service` | the Ingress backend service name and port |
-| `ConfigMap/Secret → workload` | `envFrom` entries |
+| `ConfigMap`/`Secret` `→ workload` | `envFrom` entries |
 | `PersistentVolumeClaim → workload` | a `volume` plus its `volumeMount` |
 | `HorizontalPodAutoscaler → workload` | `scaleTargetRef` |
 | `ServiceAccount → workload` | `serviceAccountName` |
-| `Role/ServiceAccount → RoleBinding` | `roleRef` and `subjects` |
+| `Role`/`ServiceAccount` `→ RoleBinding` | `roleRef` and `subjects` |
 
-Resources imported from a live cluster are marked as such and applied as a
-**partial patch containing only the fields you edited**, so applying an imported
-Deployment cannot strip probes, volumes or limits that k8n never modelled.
+Nothing reaches the cluster without a server-side dry run first. Resources
+imported from a live cluster are applied as a **partial patch of only the fields
+you edited**, so applying an imported Deployment cannot strip probes, volumes or
+limits that k8n never modelled.
 
----
+## Run it
 
-## 🔍 Troubleshooting
-
-<details>
-<summary><b>Deployed Resources page stuck on "Loading..."</b></summary>
-
-The K8s API calls may be slow. The backend now has a 15-second timeout and fetches all resource types concurrently. If your cluster is unreachable:
-```bash
-kubectl cluster-info
-kubectl config get-contexts
-```
-</details>
-
-<details>
-<summary><b>Database connection failed</b></summary>
-
-Start PostgreSQL:
-```bash
-docker-compose up -d    # Development
-```
-Or skip it — k8n works without a database (you just can't save workflows).
-</details>
-
-<details>
-<summary><b>Port 8080 already in use</b></summary>
+Download the binary for your system from [Releases](../../releases), make it
+executable, and run it. It is one file — the UI is inside it. No Node, no
+Docker, no database required.
 
 ```bash
-# Windows
-taskkill /F /IM main.exe
-
-# Linux/Mac
-pkill main
+./k8n-linux-amd64          # macOS: ./k8n-darwin-arm64   Windows: k8n-windows-amd64.exe
 ```
-Or use `npm run dev` which handles this automatically.
-</details>
 
-<details>
-<summary><b>"air: command not found"</b></summary>
+It prints a link. Open it:
+
+```
+  k8n is running on http://127.0.0.1:8080
+
+  Open this link to pair your browser:
+
+    http://127.0.0.1:8080/?t=zx8Q…
+```
+
+That link carries a pairing token, because every route here can change your
+cluster and there is no login. Opening it is the whole setup — k8n saves the
+token and takes it back out of the address bar. [SECURITY.md](SECURITY.md)
+explains what that does and does not protect.
+
+**On first run** it asks how much Kubernetes you want explained, and offers to
+walk you through a working application one object at a time.
+
+![Choosing how much to explain](docs/images/welcome.png)
+
+### Unsigned binaries
+
+This project has no code-signing certificate.
+
+- **Windows** — SmartScreen says "Windows protected your PC": More info → Run
+  anyway.
+- **macOS** — `chmod +x k8n-darwin-arm64 && xattr -d com.apple.quarantine k8n-darwin-arm64`,
+  or right-click → Open.
+- Or build it yourself, below.
+
+## What it does
+
+**It teaches while you work.** Every kind carries an explanation written for
+someone who has not memorised Kubernetes: an analogy, what it actually does, the
+one idea worth remembering, the mistakes people make, and the `kubectl` you
+would otherwise be typing. How much of that you see follows the level you picked
+— new, familiar, or expert — and you can change it any time from **View →
+Explanations**.
+
+![The guided walkthrough](docs/images/tour.png)
+
+**It checks the graph before the cluster does.** A Service selecting nothing, a
+target port matching no container port, an autoscaler with no CPU requests, a
+name Kubernetes will reject — each with the reason it matters and the fix, not
+just a red mark.
+
+**It imports what is already running.** Point it at a cluster and the live
+resources arrive as a graph, wired by their real references, with statuses that
+update from a watch stream.
+
+**Helm, visually.** Search Artifact Hub as you type, drop a chart on the canvas,
+and read what it renders before installing — including a warning when the
+chart's images cannot be pulled. "Draw these on the canvas" turns a release into
+the graph of objects it creates, laid out and wired, and those cards pick up
+real status once it is installed.
+
+**An assistant, if you want one.** Off unless you configure a key. It reads the
+cluster through read-only tools and proposes canvas changes that must compile
+before you ever see them. You accept or reject; applying still goes through the
+normal preview and dry run.
+
+**MCP in both directions.** k8n exposes its own tools to AI clients (stdio or
+HTTP, read-only by default), and can call tools from MCP servers you already
+run.
+
+### Keyboard
+
+| Shortcut | Action |
+|---|---|
+| `/` | Search the resource palette |
+| `Ctrl+S` | Save workflow |
+| `Ctrl+R` | Refresh from cluster |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
+| `Delete` | Remove the selected node |
+| `?` | Every shortcut |
+
+Double-click a card to edit it in place; double-click its name to rename it.
+
+## Configure
+
+Everything is optional. Copy [.env.example](.env.example) if you want a file.
+
+| Variable | Does |
+|---|---|
+| `API_PORT` | Port to listen on (default 8080) |
+| `API_HOST` | Interfaces to bind; loopback by default |
+| `K8N_TOKEN` | Fixed pairing token; otherwise generated and saved to `~/.k8n/token` |
+| `K8N_NO_AUTH` | `true` turns pairing off — trusted networks only |
+| `DATABASE_URL` | Postgres for saved workflows; without it they save in the browser |
+| `GEMINI_API_KEY` | Turns the assistant on |
+| `K8N_MCP_READONLY` | `true` limits k8n's own MCP tools to reading |
+| `K8N_MCP_SERVERS` | External MCP servers whose tools the assistant may call |
+
+## Build from source
+
+Needs Go 1.25+ and Node 22+.
 
 ```bash
-go install github.com/cosmtrek/air@latest
+npm ci
+cd apps/web && K8N_EXPORT=1 npx next build      # the UI as static files
+cd .. && rm -rf api/ui && cp -r web/out api/ui  # stage it for embedding
+cd api && CGO_ENABLED=0 go build -tags embedui -trimpath -ldflags="-s -w" -o ../../k8n .
 ```
-Make sure `$GOPATH/bin` (or `$HOME/go/bin`) is in your PATH.
-</details>
 
----
+Cross-compiling needs only `GOOS`/`GOARCH`; there is no cgo. The release
+workflow builds five targets exactly this way.
 
-## 👥 Authors
+### Developing
 
-- Pulkit Chauhan
-- Keshav Sharma
-- Denish Goyal
-- Md. Shaad
+```bash
+npm run dev
+```
 
-## 📄 License
+Go API on `:8080` with hot reload (needs [air](https://github.com/air-verse/air)),
+Next.js on `:3000` proxying `/api/*` to it. Without the `embedui` tag the Go
+binary serves no UI, which is what you want while the dev server is running.
 
-MIT License — see [LICENSE](LICENSE) for details.
+The dev server is a different origin from the API, so it has no token yet: open
+`http://localhost:3000/?t=<token>` once (the API prints the token), or paste it
+when the page asks. `K8N_NO_AUTH=true` skips this while developing.
 
-## 📚 Documentation
+### Docker
 
-- [API Reference](docs/API.md)
-- [Graph Schema](docs/graph-schema.json)
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+docker compose -f docker-compose.prod.yml logs api | grep pair
+```
 
----
+Nginx on port 80, plus Postgres for saved workflows, with your kubeconfig
+mounted read-only. Note that a kubeconfig pointing at `127.0.0.1` (kind, and
+some Docker Desktop setups) is unreachable from inside a container — the single
+binary avoids that problem entirely.
 
-**Made with ❤️ for the Kubernetes community**
+## Status
+
+A personal project, used against Docker Desktop and kind. Working and tested
+against a real cluster: the canvas, the compiler, import, apply with dry run,
+live status, logs, events, diagnosis, the full Helm lifecycle, and MCP in both
+directions.
+
+The gaps are listed plainly in [SECURITY.md](SECURITY.md#known-gaps): one shared
+token rather than real authentication, no cloud-cluster testing, and an AI path
+that has had very little real use.
+
+## Documentation
+
+- [docs/API.md](docs/API.md) — every REST route and MCP tool
+- [SPEC.md](SPEC.md) — design notes and the graph model
+- [SECURITY.md](SECURITY.md) — trust model, and what not to do
+
+## License
+
+MIT — see [LICENSE](LICENSE).
