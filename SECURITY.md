@@ -66,6 +66,10 @@ k8n can act as an MCP server, so AI clients can drive it.
 
 - The assistant is off unless a key is configured. With no key, no request
   leaves your machine.
+- The key is held by the k8n process, in `~/.k8n/config.json` (owner-readable),
+  and is never sent to the browser — the UI is told only that one exists and
+  what its first and last characters are. In the hosted-page setup this is what
+  keeps the key on your machine rather than on someone's web server.
 - When you ask it something, your canvas, the resource statuses on it, and
   anything its tools read from the cluster (logs, events, resource specs) are
   sent to the model provider. Do not point it at a cluster whose logs you

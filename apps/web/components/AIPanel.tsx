@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  Sparkles, X, Send, Loader2, Wrench, Check, Ban, AlertCircle, BookOpen, Stethoscope,
+  Sparkles, X, Send, Loader2, Wrench, Check, Ban, AlertCircle, BookOpen, Settings, Stethoscope,
 } from "lucide-react";
 import { useCanvasStore, GraphPatch } from "../store/canvasStore";
 import { useLearningStore } from "../store/learningStore";
-import { streamChat, fetchAIStatus, ChatTurn, explainNode } from "../lib/ai";
+import { streamChat, fetchAIStatus, AIStatus, ChatTurn, explainNode } from "../lib/ai";
+import AISetup from "./AISetup";
 import { errorMessage } from "../lib/api";
 import { checkGraph } from "../lib/graphChecks";
 
@@ -28,7 +29,9 @@ interface Message {
  * preview and apply flow.
  */
 export default function AIPanel() {
-  const [enabled, setEnabled] = useState(false);
+  const [status, setStatus] = useState<AIStatus>({ enabled: false, model: "" });
+  const [showSetup, setShowSetup] = useState(false);
+  const enabled = status.enabled;
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,7 +43,7 @@ export default function AIPanel() {
   const depth = useLearningStore(s => s.depth);
 
   useEffect(() => {
-    fetchAIStatus().then(s => setEnabled(s.enabled));
+    fetchAIStatus().then(setStatus);
   }, []);
 
   useEffect(() => {
@@ -182,46 +185,34 @@ export default function AIPanel() {
     );
   }
 
-  if (!enabled) {
+  // Unconfigured, or the user asked to change providers: the same form either
+  // way, so "which model is this talking to" is answered in one place.
+  if (!enabled || showSetup) {
     return (
-      <div className="absolute top-16 right-[calc(var(--dock-width,0px)+1rem)] z-30 w-96 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900/95 shadow-2xl backdrop-blur-md">
+      <div className="absolute top-16 right-[calc(var(--dock-width,0px)+1rem)] z-30 max-h-[calc(100vh-6rem)] w-96 overflow-y-auto custom-scrollbar rounded-lg border border-neutral-700 bg-neutral-900/95 shadow-2xl backdrop-blur-md">
         <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-gray-500" />
-            <span className="text-sm font-semibold text-gray-100">Assistant</span>
+            <Sparkles className={`h-4 w-4 ${enabled ? "text-blue-400" : "text-gray-500"}`} />
+            <span className="text-sm font-semibold text-gray-100">
+              {enabled ? "Assistant settings" : "Assistant"}
+            </span>
           </div>
           <button
-            onClick={() => setOpen(false)}
+            onClick={() => (enabled ? setShowSetup(false) : setOpen(false))}
             className="rounded p-1 text-gray-400 hover:bg-neutral-800 hover:text-gray-200"
-            aria-label="Close the assistant"
+            aria-label={enabled ? "Back to the assistant" : "Close the assistant"}
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="space-y-3 p-4">
-          <p className="text-xs leading-relaxed text-gray-400">
-            k8n has an assistant that can read your cluster — resources, logs, events — explain
-            what it finds, and propose changes to the canvas for you to accept or reject. It needs
-            a model to talk to, and none is configured.
-          </p>
-          <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-              To turn it on
-            </p>
-            <code className="block break-all font-mono text-[11px] text-gray-300">
-              GEMINI_API_KEY=your-key
-            </code>
-            <p className="mt-1.5 text-[10px] leading-relaxed text-gray-500">
-              Set it before starting k8n. Choosing a provider from inside the app is coming; for
-              now it is read once at startup.
-            </p>
-          </div>
-          <p className="text-[10px] leading-relaxed text-gray-600">
-            Everything else in k8n works without this, and nothing on your canvas is sent anywhere
-            until you ask the assistant a question.
-          </p>
-        </div>
+        <AISetup
+          status={status}
+          onChanged={next => {
+            setStatus(next);
+            if (next.enabled) setShowSetup(false);
+          }}
+        />
       </div>
     );
   }
@@ -229,10 +220,23 @@ export default function AIPanel() {
   return (
     <div className="absolute top-16 right-[calc(var(--dock-width,0px)+1rem)] bottom-4 z-30 w-96 bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-lg shadow-2xl flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-800">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-blue-400" />
+        <div className="flex min-w-0 items-center gap-2">
+          <Sparkles className="w-4 h-4 flex-shrink-0 text-blue-400" />
           <span className="text-sm font-semibold text-gray-100">Assistant</span>
+          {status.model && (
+            <span className="truncate font-mono text-[10px] text-gray-500" title={status.model}>
+              {status.model}
+            </span>
+          )}
         </div>
+        <button
+          onClick={() => setShowSetup(true)}
+          className="p-1 text-gray-400 hover:text-gray-200 hover:bg-neutral-800 rounded"
+          title="Change provider or model"
+          aria-label="Assistant settings"
+        >
+          <Settings className="w-3.5 h-3.5" />
+        </button>
         <button
           onClick={() => setOpen(false)}
           className="p-1 text-gray-400 hover:text-gray-200 hover:bg-neutral-800 rounded"

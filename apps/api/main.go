@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/user/k8s-graph-controller/backend/internal/ai"
 	"github.com/user/k8s-graph-controller/backend/internal/auth"
 	"github.com/user/k8s-graph-controller/backend/internal/handlers"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
@@ -129,6 +130,11 @@ func main() {
 		fmt.Printf("No database; saved workflows are disabled: %v\n", err)
 	}
 
+	// The assistant's provider and key: the saved file first, the environment
+	// otherwise. Nothing here is required — without it the AI panel explains
+	// how to turn itself on and the rest of k8n is unaffected.
+	ai.Init()
+
 	// External MCP servers, if any are configured. Their tools become available
 	// to the assistant alongside k8n's own.
 	for _, problem := range handlers.InitMCPClients(context.Background()) {
@@ -182,6 +188,11 @@ func main() {
 	// AI assistant. Every route degrades to 503 with a hint when GEMINI_API_KEY
 	// is unset, and the frontend hides the panel based on /api/ai/status.
 	r.GET("/api/ai/status", handlers.GetAIStatus())
+	// Choosing a provider while k8n runs, rather than restarting with a
+	// different environment variable. The key never comes back out.
+	r.POST("/api/ai/config", handlers.SetAIConfig())
+	r.POST("/api/ai/config/test", handlers.TestAIConfig())
+	r.DELETE("/api/ai/config", handlers.ForgetAIConfig())
 	r.POST("/api/ai/chat", handlers.AIChat(getK8sClient))
 	r.POST("/api/ai/explain", handlers.AIExplain(getK8sClient))
 

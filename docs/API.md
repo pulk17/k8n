@@ -415,8 +415,20 @@ Same body. Creates the release, creating the namespace if needed.
 
 ## AI assistant
 
-Every route here returns `503` with a hint when `GEMINI_API_KEY` is unset, and
-the frontend hides the panel based on `/api/ai/status`.
+Every route here returns `503` with a hint when no model is configured, and the
+panel offers the setup form instead of a chat box.
+
+### Choosing a provider
+
+Anything speaking the OpenAI chat format works — OpenAI, Anthropic, Mistral,
+DeepSeek, Z.AI, OpenRouter, or a self-hosted endpoint — and `google` uses
+Google's own SDK. The provider can be changed while k8n is running.
+
+The key is stored by the k8n process in `~/.k8n/config.json` (owner-readable)
+and is never returned: every response carries a masked hint instead. Set
+`K8N_AI_PROVIDER`, `K8N_AI_MODEL`, `K8N_AI_API_KEY` and `K8N_AI_BASE_URL` (or
+the older `GEMINI_API_KEY`) to configure it without the UI; the saved file wins
+over the environment.
 
 ### A supervisor and two specialists
 
@@ -445,11 +457,33 @@ is deterministic — no second model reviewing the first.
 ```json
 {
   "enabled": true,
-  "model": "gemini-2.5-flash",
+  "provider": "openai",
+  "model": "gpt-4.1-mini",
+  "baseUrl": "https://api.openai.com/v1",
+  "keyHint": "sk-1…9f2c",
+  "source": "file",
+  "providers": [{ "id": "openai", "label": "OpenAI", "baseUrl": "…", "defaultModel": "…" }],
   "agents": ["inspector", "architect"],
   "mcpServers": [{ "name": "docs", "tools": 4 }]
 }
 ```
+
+### `POST /api/ai/config`
+
+`{provider, model, baseUrl, apiKey}` — saves and puts into force immediately.
+An empty `apiKey` keeps the key already saved, so the model can be changed
+without retyping it. Returns the same shape as `/status`, key masked.
+
+### `POST /api/ai/config/test`
+
+Same body. Asks the provider for one word and reports `{ok, reply}` or
+`{ok: false, error}`. It tests what was sent **without saving it**, so a wrong
+key cannot replace a working one.
+
+### `DELETE /api/ai/config`
+
+Removes the saved key. If the environment still has one, that becomes current
+again.
 
 ### `POST /api/ai/chat`
 

@@ -12,15 +12,21 @@ import (
 	"google.golang.org/genai"
 )
 
-// AIConfig is resolved once at startup.
-var aiConfig = ai.ConfigFromEnv()
+// The assistant's configuration is read per request, not captured at startup:
+// a key added through the UI has to take effect without a restart.
 
 // GetAIStatus tells the frontend whether to show AI features at all.
 func GetAIStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		cfg := ai.Current()
 		c.JSON(http.StatusOK, gin.H{
-			"enabled":    aiConfig.Enabled(),
-			"model":      aiConfig.Model,
+			"enabled":    cfg.Enabled(),
+			"model":      cfg.Model,
+			"provider":   cfg.Provider,
+			"baseUrl":    cfg.BaseURL,
+			"keyHint":    cfg.Masked(),
+			"source":     cfg.Source,
+			"providers":  ai.Providers,
 			"agents":     []string{"inspector", "architect"},
 			"mcpServers": ConnectedMCPServers(),
 		})
@@ -51,10 +57,10 @@ type chatRequest struct {
 // AIChat streams an assistant turn over SSE.
 func AIChat(clientGetter ClientGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !aiConfig.Enabled() {
+		if !ai.Current().Enabled() {
 			c.JSON(http.StatusServiceUnavailable, gin.H{
 				"error": "AI features are not configured",
-				"hint":  "Set GEMINI_API_KEY to enable the assistant. Everything else in k8n works without it.",
+				"hint":  "Choose a provider and add a key in the assistant panel. Everything else in k8n works without it.",
 			})
 			return
 		}
@@ -68,7 +74,7 @@ func AIChat(clientGetter ClientGetter) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
 		defer cancel()
 
-		client, err := ai.NewClient(ctx, aiConfig)
+		client, err := ai.NewClient(ctx, ai.Current())
 		if err != nil || client == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialise the assistant", "details": fmt.Sprint(err)})
 			return
@@ -171,7 +177,7 @@ type explainRequest struct {
 // AIExplain returns a plain-English explanation of one node and its wiring.
 func AIExplain(clientGetter ClientGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if !aiConfig.Enabled() {
+		if !ai.Current().Enabled() {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI features are not configured"})
 			return
 		}
@@ -197,7 +203,7 @@ func AIExplain(clientGetter ClientGetter) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 		defer cancel()
 
-		client, err := ai.NewClient(ctx, aiConfig)
+		client, err := ai.NewClient(ctx, ai.Current())
 		if err != nil || client == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialise the assistant"})
 			return

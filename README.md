@@ -93,10 +93,16 @@ chart's images cannot be pulled. "Draw these on the canvas" turns a release into
 the graph of objects it creates, laid out and wired, and those cards pick up
 real status once it is installed.
 
-**An assistant, if you want one.** Off unless you configure a key. It reads the
-cluster through read-only tools and proposes canvas changes that must compile
-before you ever see them. You accept or reject; applying still goes through the
-normal preview and dry run.
+**An assistant, if you want one.** Off until you give it a model. Choose one in
+the panel while k8n is running — OpenAI, Anthropic, Google, Mistral, DeepSeek,
+Z.AI, OpenRouter, or any OpenAI-compatible endpoint including something running
+on your own machine — test the connection, and the key is written to
+`~/.k8n/config.json` on the machine k8n runs on. It never comes back to the
+page; the UI only ever sees `sk-1a…9f`.
+
+It reads the cluster through read-only tools and proposes canvas changes that
+must compile before you ever see them. You accept or reject; applying still
+goes through the normal preview and dry run.
 
 **MCP in both directions.** k8n exposes its own tools to AI clients (stdio or
 HTTP, read-only by default), and can call tools from MCP servers you already
@@ -126,7 +132,9 @@ Everything is optional. Copy [.env.example](.env.example) if you want a file.
 | `K8N_TOKEN` | Fixed pairing token; otherwise generated and saved to `~/.k8n/token` |
 | `K8N_NO_AUTH` | `true` turns pairing off — trusted networks only |
 | `DATABASE_URL` | Postgres for saved workflows; without it they save in the browser |
-| `GEMINI_API_KEY` | Turns the assistant on |
+| `K8N_AI_PROVIDER` / `K8N_AI_MODEL` / `K8N_AI_API_KEY` | The assistant's model, when you would rather not use the panel |
+| `K8N_AI_BASE_URL` | An OpenAI-compatible endpoint of your own |
+| `GEMINI_API_KEY` | The original name; still means Gemini |
 | `K8N_MCP_READONLY` | `true` limits k8n's own MCP tools to reading |
 | `K8N_MCP_SERVERS` | External MCP servers whose tools the assistant may call |
 

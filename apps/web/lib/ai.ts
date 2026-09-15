@@ -2,14 +2,53 @@ import { TOKEN_HEADER, getToken, reportUnauthorized } from "./session";
 import { API_URL, request } from "./api";
 import { GraphPatch } from "../store/canvasStore";
 
+export interface AIProvider {
+  id: string;
+  label: string;
+  baseUrl: string;
+  defaultModel: string;
+  keysUrl?: string;
+  note?: string;
+}
+
 export interface AIStatus {
   enabled: boolean;
   model: string;
+  provider?: string;
+  baseUrl?: string;
+  /** All the browser is ever told about the key: "sk-1a…9f". */
+  keyHint?: string;
+  /** "file" when it was set here, "env" when the machine was started with it. */
+  source?: string;
+  /** What can be chosen, with a starting model for each. */
+  providers?: AIProvider[];
   /** The specialists the supervisor can delegate to. */
   agents?: string[];
   /** External MCP servers whose tools the assistant can also call. */
   mcpServers?: string[];
 }
+
+export interface AIConfigRequest {
+  provider: string;
+  model: string;
+  baseUrl?: string;
+  /** Blank keeps whatever key is already saved. */
+  apiKey?: string;
+}
+
+export const saveAIConfig = (config: AIConfigRequest) =>
+  request<AIStatus>("/api/ai/config", { method: "POST", body: config });
+
+/** Asks the provider for one word, so a wrong key is found here. */
+export const testAIConfig = (config: AIConfigRequest) =>
+  request<{ ok: boolean; reply?: string }>("/api/ai/config/test", {
+    method: "POST",
+    body: config,
+    timeoutMs: 60000,
+  });
+
+export const forgetAIConfig = () =>
+  request<AIStatus>("/api/ai/config", { method: "DELETE" });
 
 /** One streamed step of an assistant turn. */
 export interface AIEvent {
