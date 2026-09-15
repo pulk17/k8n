@@ -22,6 +22,9 @@ var (
 	k8sClientMu sync.RWMutex
 )
 
+// mountUI serves the embedded frontend; set only in builds tagged embedui (ui.go).
+var mountUI func(*gin.Engine)
+
 func getK8sClient() *k8s.Client {
 	k8sClientMu.RLock()
 	defer k8sClientMu.RUnlock()
@@ -159,6 +162,10 @@ func main() {
 	}, nil)
 	r.Any("/mcp", gin.WrapH(mcpHandler))
 	r.Any("/mcp/*path", gin.WrapH(mcpHandler))
+
+	if mountUI != nil {
+		mountUI(r)
+	}
 
 	port := os.Getenv("API_PORT")
 	if port == "" {

@@ -57,3 +57,6 @@ deploy/aws/.terraform.lock.hcl
 .k8n.pid
 backend.log
 frontend.log
+
+# Frontend copied in for the single-binary build (apps/api/ui.go)
+apps/api/ui/
