@@ -69,8 +69,10 @@ export function checkGraph(nodes: Node<NodeData>[], edges: Edge[]): GraphIssue[]
       issues.push({ nodeId: node.id, level, title, why, fix });
 
     // Imported resources describe what is already running. Telling someone
-    // their live cluster is missing a field they never typed is just noise.
-    if (node.data.origin === "cluster") continue;
+    // their live cluster is missing a field they never typed is just noise —
+    // and the same goes for what a chart rendered, which is not theirs to fix
+    // here either.
+    if (node.data.origin === "cluster" || node.data.origin === "helm") continue;
 
     if (!DNS_1123.test(name)) {
       add(

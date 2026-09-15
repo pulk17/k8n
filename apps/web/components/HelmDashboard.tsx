@@ -1,35 +1,73 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PackageSearch, Search, X, Download } from "lucide-react";
 import { HelmChart, searchHelmCharts } from "../lib/api";
 import { notifyError } from "../lib/dialog";
+
+/** Long enough that typing a word is one request, short enough to feel live. */
+const DEBOUNCE_MS = 300;
 
 export default function HelmDashboard() {
   const [query, setQuery] = useState("");
   const [charts, setCharts] = useState<HelmChart[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const handleSearch = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!query.trim()) return;
+  /**
+   * Searches as you type.
+   *
+   * It used to need Enter, which made an empty panel look like "no results"
+   * rather than "nothing asked yet". Each keystroke restarts the timer, and a
+   * reply that arrives after the query moved on is dropped — otherwise a slow
+   * search for "pro" lands on top of the results for "prometheus".
+   */
+  useEffect(() => {
+    const term = query.trim();
+    // An empty box is not a search. Nothing is set here for that case: the
+    // render below reads the query, so there is no state to clear — and this
+    // effect never calls setState synchronously.
+    if (!term) return;
 
-    setLoading(true);
-    try {
-      setCharts(await searchHelmCharts(query));
-    } catch (err) {
-      setCharts([]);
-      // Searching goes out to Artifact Hub, so this fails when the backend is
-      // down *or* when the machine has no internet.
-      notifyError(
-        `Chart search failed: ${err instanceof Error ? err.message : err}. ` +
-          `Artifact Hub needs internet access.`
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+    let cancelled = false;
+
+    const timer = setTimeout(() => {
+      setLoading(true);
+      searchHelmCharts(term)
+        .then(found => {
+          if (cancelled) return;
+          setCharts(found);
+          setSearched(true);
+        })
+        .catch(err => {
+          if (cancelled) return;
+          setCharts([]);
+          setSearched(true);
+          // Searching goes out to Artifact Hub, so this fails when the backend
+          // is down *or* when the machine has no internet.
+          notifyError(
+            `Chart search failed: ${err instanceof Error ? err.message : err}. ` +
+              `Artifact Hub needs internet access.`
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  // What the list shows is a function of the query: clearing the box empties
+  // the results without a round trip, and a pending search for the old term
+  // cannot repopulate them.
+  const term = query.trim();
+  const results = term ? charts : [];
+  const searching = Boolean(term) && loading;
 
   const onDragStart = (event: React.DragEvent<HTMLDivElement>, chart: HelmChart) => {
     event.dataTransfer.setData("application/reactflow", "k8sNode");
@@ -67,29 +105,26 @@ export default function HelmDashboard() {
       </div>
 
       <div className="flex-shrink-0 p-3 border-b border-gray-200 dark:border-neutral-800">
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <input 
-            type="text" 
-            value={query} 
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input
+            type="search"
+            value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search Helm charts..." 
-            className="flex-1 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Search Helm charts..."
+            autoFocus
+            aria-label="Search Helm charts on Artifact Hub"
+            className="w-full rounded border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-800"
           />
-          <button 
-            type="submit" 
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded px-4 py-2 transition-colors flex items-center gap-2"
-          >
-            <Search className="w-4 h-4" />
-          </button>
-        </form>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-        {loading ? (
+        {searching ? (
           <div className="text-center text-sm text-gray-500 py-8 italic">Searching Artifact Hub...</div>
-        ) : charts.length === 0 ? (
+        ) : results.length === 0 ? (
           <div className="text-center text-sm text-gray-500 py-8">
-            {query ? (
+            {term && searched ? (
               <div>
                 <p className="mb-2">No charts found for &quot;{query}&quot;</p>
                 <p className="text-xs">Try searching for: nginx, redis, postgresql, mongodb</p>
@@ -102,7 +137,7 @@ export default function HelmDashboard() {
             )}
           </div>
         ) : (
-          charts.map((chart) => (
+          results.map((chart) => (
             <div
               key={`${chart.repository?.name}/${chart.name}`}
               className="group border border-gray-200 dark:border-neutral-800 rounded p-3 hover:border-blue-300 dark:hover:border-blue-700 bg-white dark:bg-neutral-900 transition-colors cursor-grab active:cursor-grabbing"

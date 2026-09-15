@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Edge, Node } from "reactflow";
-import { AlertTriangle, ArrowRight, GraduationCap, Info, Radio, Sliders, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, GraduationCap, Info, Package, Radio, Sliders, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "../store/canvasStore";
 import { fieldsFor } from "../lib/nodeSchema";
 import { FieldValue, NodeData, fieldValue } from "../lib/graph";
@@ -11,6 +11,7 @@ import { CONNECTION_CONCEPTS, conceptFor } from "../lib/concepts";
 import { CONNECTION_TYPES, darkStatusStyle } from "../lib/constants";
 import { GraphIssue } from "../lib/graphChecks";
 import FieldInput from "./FieldInput";
+import InspectorChart from "./InspectorChart";
 import InspectorLearn from "./InspectorLearn";
 import InspectorLive from "./InspectorLive";
 
@@ -28,7 +29,7 @@ import InspectorLive from "./InspectorLive";
 
 export const INSPECTOR_WIDTH = 340;
 
-type Tab = "configure" | "learn" | "live";
+type Tab = "configure" | "chart" | "learn" | "live";
 
 interface InspectorProps {
   selectedEdge: Edge | null;
@@ -46,11 +47,14 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
 
   const node = (nodes.find(n => n.id === selectedNodeId) ?? null) as Node<NodeData> | null;
 
-  // Starts on Configure every time. The canvas gives this component a key of
-  // whatever is selected, so picking a different resource remounts it and the
-  // tab resets on its own — staying on "Live" while selecting a node that has
-  // no live half would otherwise show an empty panel.
-  const [tab, setTab] = useState<Tab>("configure");
+  // Starts on Configure every time — except on a chart, where what the thing
+  // installs is the first question anyone has. The canvas gives this component
+  // a key of whatever is selected, so picking a different resource remounts it
+  // and the tab resets on its own; staying on "Live" while selecting a node
+  // that has no live half would otherwise show an empty panel.
+  const [tab, setTab] = useState<Tab>(() =>
+    node?.data?.kind === "HelmRelease" ? "chart" : "configure"
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -75,6 +79,7 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
 
   const { kind, name, namespace = "default", status, statusMessage, origin } = node.data;
   const isLive = origin === "cluster";
+  const isFromChart = origin === "helm";
   const setField = (key: string, value: FieldValue) => updateNodeData(node.id, { [key]: value });
   const tone = darkStatusStyle(status);
   const concept = conceptFor(kind);
@@ -126,6 +131,11 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
         <TabButton icon={Sliders} active={tab === "configure"} onClick={() => setTab("configure")}>
           Configure
         </TabButton>
+        {kind === "HelmRelease" && (
+          <TabButton icon={Package} active={tab === "chart"} onClick={() => setTab("chart")}>
+            Chart
+          </TabButton>
+        )}
         <TabButton icon={GraduationCap} active={tab === "learn"} onClick={() => setTab("learn")}>
           Learn
         </TabButton>
@@ -168,6 +178,14 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
                 </div>
               </div>
             ))}
+
+            {isFromChart && (
+              <p className="rounded border border-violet-900/40 bg-violet-950/30 px-2.5 py-2 text-[10px] leading-relaxed text-violet-300">
+                Rendered from a chart, so it is here to be read. Helm creates this object when the
+                release is installed, and k8n never applies it — change it through the release&apos;s
+                Custom Values instead.
+              </p>
+            )}
 
             {isLive && (
               <p className="rounded border border-sky-900/40 bg-sky-950/30 px-2.5 py-2 text-[10px] leading-relaxed text-sky-300">
@@ -231,6 +249,8 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
             </p>
           </div>
         )}
+
+        {tab === "chart" && kind === "HelmRelease" && <InspectorChart node={node} />}
 
         {tab === "learn" && <InspectorLearn kind={kind} name={name} namespace={namespace} />}
 

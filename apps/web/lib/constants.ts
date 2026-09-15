@@ -72,6 +72,8 @@ const STATUS_TONES: Record<string, StatusTone> = {
   Completed: "info",
   Succeeded: "info",
   "Ready to Install": "info",
+  // Rendered from a chart and drawn on the canvas, but not installed yet.
+  "From chart": "idle",
   Pending: "warn",
   NotReady: "warn",
   Failed: "bad",

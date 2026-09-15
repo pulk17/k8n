@@ -4,6 +4,7 @@ import { useState } from "react";
 import Editor from "@monaco-editor/react";
 import { X, Play, Loader2, Copy, Download, AlertTriangle, Info, Check } from "lucide-react";
 import { CompileNote } from "../lib/api";
+import { chartWarnings } from "../lib/chartChecks";
 
 interface YamlPreviewProps {
   yaml: string;
@@ -37,6 +38,10 @@ ${helmYaml}` : yaml;
 
   const warnings = notes.filter(n => n.level === "warning");
   const infos = notes.filter(n => n.level === "info");
+  // Read from the chart's own rendering. A pod cannot tell you its image does
+  // not exist until it has failed to pull it; this can, while Apply is still
+  // an unpressed button.
+  const chartIssues = chartWarnings(helmYaml || "");
 
   const copy = async () => {
     await navigator.clipboard.writeText(shown);
@@ -89,6 +94,29 @@ ${helmYaml}` : yaml;
             </button>
           </div>
         </div>
+
+        {chartIssues.length > 0 && (
+          <div className="space-y-2 border-b border-neutral-800 bg-amber-950/20 px-4 py-2.5">
+            {chartIssues.map((issue, i) => (
+              <div key={`c${i}`} className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-400" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium text-amber-200">{issue.title}</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-gray-400">{issue.why}</p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-gray-300">
+                    <span className="text-gray-500">Fix: </span>
+                    {issue.fix}
+                  </p>
+                  {issue.images && (
+                    <p className="mt-1 truncate font-mono text-[10px] text-amber-300/80">
+                      {issue.images.join("  ")}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {(warnings.length > 0 || infos.length > 0) && (
           <div className="px-4 py-2 border-b border-neutral-800 space-y-1 max-h-32 overflow-y-auto custom-scrollbar bg-neutral-950/40">

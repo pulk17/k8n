@@ -3,7 +3,7 @@ import {
   Node, Edge, Connection, addEdge, applyNodeChanges, applyEdgeChanges,
   NodeChange, EdgeChange,
 } from "reactflow";
-import { fetchResources, fetchNamespaces, errorMessage, K8sResource } from "../lib/api";
+import { fetchResources, fetchNamespaces, errorMessage, ImportedGraph, K8sResource } from "../lib/api";
 import { WorkflowSource, loadWorkflow, saveWorkflow } from "../lib/workflows";
 import { generateEdges } from "../lib/edges";
 import { layoutGraph } from "../lib/layout";
@@ -43,6 +43,9 @@ export interface CanvasState {
   graphId: string | null;
   graphName: string;
   selectedNodeId: string | null;
+  /** Whether the right-hand dock is open. Selecting a node no longer opens it:
+      the card itself expands for the common edits, and this is for the rest. */
+  inspectorOpen: boolean;
   dirty: boolean;
   showPods: boolean;
   showSystemNamespaces: boolean;
@@ -57,6 +60,9 @@ export interface CanvasState {
   setActiveNamespace: (ns: string) => void;
   setGraphName: (name: string) => void;
   setSelectedNodeId: (id: string | null) => void;
+  setInspectorOpen: (open: boolean) => void;
+  /** Opens the dock on a node in one step, for the card's own button. */
+  inspectNode: (id: string) => void;
   setShowPods: (show: boolean) => void;
   setShowSystemNamespaces: (show: boolean) => void;
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
@@ -64,6 +70,8 @@ export interface CanvasState {
   applyLiveStatus: (resources: K8sResource[]) => void;
   addNode: (node: Node) => void;
   deleteNode: (nodeId: string) => void;
+  /** Puts the resources a chart renders on the canvas, beside their release. */
+  addChartNodes: (releaseId: string, imported: ImportedGraph) => number;
   /** Returns where it landed, so the UI can say so. */
   saveGraph: () => Promise<WorkflowSource>;
   loadGraph: (id: string) => Promise<void>;
@@ -115,6 +123,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   loading: false,
   error: null,
   selectedNodeId: null,
+  inspectorOpen: false,
   dirty: false,
   showPods: false,
   showSystemNamespaces: false,
@@ -182,6 +191,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   setGraphName: name => set({ graphName: name, dirty: true }),
   setSelectedNodeId: id => set({ selectedNodeId: id }),
+
+  setInspectorOpen: open => set({ inspectorOpen: open }),
+
+  inspectNode: id => set({ selectedNodeId: id, inspectorOpen: true }),
   setShowPods: show => {
     set({ showPods: show });
     if (get().nodes.some(n => n.data?.origin === "cluster")) get().hydrateGraph();
@@ -268,12 +281,30 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   applyLiveStatus: resources => {
     const byUid = new Map(resources.map(r => [r.uid, r]));
+    // Chart-rendered nodes have no cluster identity until the release is
+    // installed, so they are matched on what the chart named them instead.
+    // This is what makes a failed install visible where you drew it: the
+    // rendered cards pick up ImagePullBackOff like any other resource.
+    const byIdentity = new Map(resources.map(r => [`${r.kind}/${r.namespace}/${r.name}`, r]));
     let moved = false;
 
     const nodes = get().nodes.map(node => {
-      if (node.data?.origin !== "cluster") return node;
+      const origin = node.data?.origin;
+      if (origin !== "cluster" && origin !== "helm") return node;
 
-      const live = byUid.get(node.id);
+      const live =
+        origin === "cluster"
+          ? byUid.get(node.id)
+          : byIdentity.get(`${node.data.kind}/${node.data.namespace}/${node.data.name}`);
+
+      // An uninstalled chart is not a deleted resource — it was never there.
+      if (!live && origin === "helm") {
+        return node.data.status === "From chart"
+          ? node
+          : ((moved = true),
+            { ...node, data: { ...node.data, status: "From chart", statusMessage: undefined } });
+      }
+
       const status = live ? live.status : "Deleted";
       const statusMessage = live ? live.statusMessage : "No longer in the cluster";
       const readyReplicas = live ? live.readyReplicas : node.data.readyReplicas;
@@ -302,11 +333,90 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   deleteNode: id => {
     get().saveHistory();
+    // A release takes its rendered resources with it: they only ever existed to
+    // show what that chart installs, so leaving them behind would strand a
+    // handful of cards nothing on the canvas explains.
+    const gone = new Set([id]);
+    for (const node of get().nodes) {
+      if (node.data?.chartOf === id) gone.add(node.id);
+    }
     set({
-      nodes: get().nodes.filter(n => n.id !== id),
-      edges: get().edges.filter(e => e.source !== id && e.target !== id),
-      selectedNodeId: get().selectedNodeId === id ? null : get().selectedNodeId,
+      nodes: get().nodes.filter(n => !gone.has(n.id)),
+      edges: get().edges.filter(e => !gone.has(e.source) && !gone.has(e.target)),
+      selectedNodeId: gone.has(get().selectedNodeId || "") ? null : get().selectedNodeId,
     });
+  },
+
+  /**
+   * Draws the objects a chart renders next to the release that installs them.
+   *
+   * They are marked `origin: "helm"`, which keeps them out of the compiler —
+   * Helm creates these, and applying them as plain YAML too would make every
+   * one of them twice, owned by two different things. They are here to be read.
+   */
+  addChartNodes: (releaseId, imported) => {
+    const release = get().nodes.find(n => n.id === releaseId);
+    if (!release) return 0;
+
+    get().saveHistory();
+
+    // Re-rendering replaces whatever the last render drew, rather than
+    // stacking a second copy of every object on top of the first.
+    const stale = new Set(get().nodes.filter(n => n.data?.chartOf === releaseId).map(n => n.id));
+    const nodes = get().nodes.filter(n => !stale.has(n.id));
+    const edges = get().edges.filter(e => !stale.has(e.source) && !stale.has(e.target));
+
+    const byImportId = new Map<string, Node>();
+    const drawn: Node[] = [];
+    for (const spec of imported.nodes) {
+      const node = makeNode(nodeId(spec.kind), spec.kind, spec.name, spec.namespace, spec.fields);
+      node.data.origin = "helm";
+      node.data.chartOf = releaseId;
+      node.data.status = "From chart";
+      byImportId.set(spec.id, node);
+      drawn.push(node);
+      nodes.push(node);
+    }
+
+    // The release owns everything it renders; the rest are the references the
+    // importer found between the objects themselves (a Service's selector, a
+    // mounted volume). Both go through the same connection rules as hand-drawn
+    // wires, so a pair the canvas has no relationship for simply gets none.
+    const connect = (source: Node, target: Node) => {
+      if (!isValidConnection(source.data.kind, target.data.kind)) return;
+      if (edges.some(e => e.source === source.id && e.target === target.id)) return;
+      edges.push(makeEdge(source, target));
+    };
+    const drawnEdges: Edge[] = [];
+    const before = edges.length;
+    for (const node of drawn) connect(release, node);
+    for (const edge of imported.edges) {
+      const source = byImportId.get(edge.source);
+      const target = byImportId.get(edge.target);
+      if (source && target) connect(source, target);
+    }
+    drawnEdges.push(...edges.slice(before));
+
+    // Laid out as its own graph, then moved to sit beside the release. Twenty
+    // objects dropped into a grid is a ball of crossing wires; dagre gives the
+    // same objects the shape the chart actually has. The release keeps the
+    // position the user dropped it at, and nothing else on the canvas moves.
+    const positioned = layoutGraph([release, ...drawn], drawnEdges);
+    const anchor = positioned.find(n => n.id === release.id);
+    const dx = anchor ? release.position.x - anchor.position.x : 0;
+    const dy = anchor ? release.position.y - anchor.position.y : 0;
+    const placed = new Map(
+      positioned
+        .filter(n => n.id !== release.id)
+        .map(n => [n.id, { x: n.position.x + dx, y: n.position.y + dy }])
+    );
+    for (const node of drawn) {
+      const at = placed.get(node.id);
+      if (at) node.position = at;
+    }
+
+    set({ nodes, edges, dirty: true });
+    return drawn.length;
   },
 
   loadNamespaces: async () => {

@@ -21,8 +21,12 @@ export interface NodeData {
       badge. Kept as primitives to avoid a cycle between the two modules. */
   issueCount?: number;
   issueSummary?: string;
-  /** "cluster" means imported — only edited fields are ever applied. */
-  origin?: "canvas" | "cluster";
+  /** "cluster" means imported — only edited fields are ever applied.
+      "helm" means rendered from a chart: shown so the graph a chart installs is
+      visible, never compiled, because Helm is what creates those objects. */
+  origin?: "canvas" | "cluster" | "helm";
+  /** For a "helm" node, the id of the HelmRelease node it was rendered from. */
+  chartOf?: string;
   color?: string;
   /** Which fields the user changed on an imported node. */
   __edited?: Record<string, boolean>;

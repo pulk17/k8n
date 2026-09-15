@@ -81,6 +81,12 @@ func BuildManifests(g Graph) ([]string, []CompileNote, error) {
 			// Helm releases are installed through the Helm API, not applied as YAML.
 			continue
 		}
+		if strField(n.Data, "origin") == "helm" {
+			// Drawn from `helm template` so the graph a chart installs is visible.
+			// Helm creates these objects; applying them here as well would make
+			// every one of them twice, owned by two different things.
+			continue
+		}
 		if n.Name() == "" {
 			notes = append(notes, CompileNote{
 				NodeID: n.ID, Kind: kind, Level: "warning",
