@@ -39,6 +39,13 @@ type chatRequest struct {
 	// the user is actually looking at.
 	Graph     *Graph `json:"graph"`
 	Namespace string `json:"namespace"`
+	// Depth is how much Kubernetes the reader wants explained: "new", "some" or
+	// "expert". The answer is pitched at it.
+	Depth string `json:"depth"`
+	// Notes are the problems k8n is already showing on screen — failed checks,
+	// chart warnings. Without them the assistant re-discovers what the user can
+	// already see, and sometimes contradicts it.
+	Notes []string `json:"notes"`
 }
 
 // AIChat streams an assistant turn over SSE.
@@ -98,7 +105,19 @@ func buildUserTurn(req chatRequest) string {
 	if req.Graph != nil && len(req.Graph.Nodes) > 0 {
 		sb.WriteString("\n\n---\nThe user's canvas currently contains:\n")
 		for _, n := range req.Graph.Nodes {
-			sb.WriteString(fmt.Sprintf("- %s %q (id %s, namespace %s)\n", n.Kind(), n.Name(), n.ID, n.Namespace()))
+			sb.WriteString(fmt.Sprintf("- %s %q (id %s, namespace %s)", n.Kind(), n.Name(), n.ID, n.Namespace()))
+			// The status on the card the user is looking at. "ImagePullBackOff"
+			// is the entire question in most "why is this broken" turns.
+			if status := strField(n.Data, "status"); status != "" {
+				sb.WriteString(fmt.Sprintf(" — status: %s", status))
+			}
+			if msg := strField(n.Data, "statusMessage"); msg != "" {
+				sb.WriteString(fmt.Sprintf(" (%s)", msg))
+			}
+			if strField(n.Data, "origin") == "helm" {
+				sb.WriteString(" [rendered from a Helm chart; Helm owns it]")
+			}
+			sb.WriteString("\n")
 		}
 		if len(req.Graph.Edges) > 0 {
 			sb.WriteString("Edges:\n")
@@ -115,9 +134,27 @@ func buildUserTurn(req chatRequest) string {
 		}
 	}
 
+	if len(req.Notes) > 0 {
+		sb.WriteString("\nProblems k8n is already showing the user on screen:\n")
+		for _, note := range req.Notes {
+			sb.WriteString("- " + note + "\n")
+		}
+	}
+
 	if req.Namespace != "" && req.Namespace != "all" {
 		sb.WriteString(fmt.Sprintf("Active namespace: %s\n", req.Namespace))
 	}
+
+	// One line, because the difference between a good answer for a beginner and
+	// for an expert is almost entirely where it starts.
+	switch req.Depth {
+	case "new":
+		sb.WriteString("The reader is new to Kubernetes: explain what an object is for before " +
+			"using its name as if it were understood, and keep it in plain words.\n")
+	case "expert":
+		sb.WriteString("The reader uses Kubernetes daily: skip the basics and be terse.\n")
+	}
+
 	return sb.String()
 }
 

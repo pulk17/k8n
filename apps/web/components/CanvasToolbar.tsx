@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  CheckCircle2, Eye, FolderOpen, HelpCircle, Loader2, Play, RefreshCw, Save, SlidersHorizontal,
+  CheckCircle2, Eye, FolderOpen, GraduationCap, HelpCircle, Loader2, Play, RefreshCw, Save,
+  SlidersHorizontal,
 } from "lucide-react";
+import { DEPTHS, useLearningStore } from "../store/learningStore";
 
 export type ApplyState = "idle" | "dry-running" | "applying" | "success" | "error";
 
@@ -42,6 +44,9 @@ interface CanvasToolbarProps {
   onShowPodsChange: (value: boolean) => void;
   showSystemNamespaces: boolean;
   onShowSystemNamespacesChange: (value: boolean) => void;
+
+  /** Replays the guided walkthrough. */
+  onStartTour: () => void;
 }
 
 export default function CanvasToolbar({
@@ -51,7 +56,11 @@ export default function CanvasToolbar({
   namespaces, activeNamespace, onNamespaceChange,
   showPods, onShowPodsChange,
   showSystemNamespaces, onShowSystemNamespacesChange,
+  onStartTour,
 }: CanvasToolbarProps) {
+  const depth = useLearningStore(s => s.depth);
+  const setDepth = useLearningStore(s => s.setDepth);
+
   const applyLabel =
     applyState === "dry-running" ? "Validating…"
     : applyState === "applying" ? "Applying…"
@@ -130,6 +139,37 @@ export default function CanvasToolbar({
           <p className="border-t border-neutral-800 px-3 py-2 text-[10px] leading-snug text-gray-500">
             These change what gets imported from the cluster. Refresh to pick them up.
           </p>
+
+          {/* How much Kubernetes the app explains. Answered once on a first
+              visit; this is where it can be changed afterwards, which is the
+              only reason the first answer is safe to ask for. */}
+          <div className="border-t border-neutral-800 px-3 py-2">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              Explanations
+            </p>
+            <div className="space-y-1">
+              {DEPTHS.map(option => (
+                <button
+                  key={option.id}
+                  onClick={() => setDepth(option.id)}
+                  className={`block w-full rounded px-2 py-1 text-left text-[11px] transition-colors ${
+                    depth === option.id
+                      ? "bg-blue-950/50 text-blue-200"
+                      : "text-gray-400 hover:bg-neutral-800 hover:text-gray-200"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={onStartTour}
+              className="mt-2 flex w-full items-center gap-1.5 rounded border border-neutral-800 px-2 py-1.5 text-[11px] text-gray-400 transition-colors hover:border-neutral-700 hover:text-gray-200"
+            >
+              <GraduationCap className="h-3 w-3" />
+              Walk me through an app again
+            </button>
+          </div>
         </Menu>
 
         <button

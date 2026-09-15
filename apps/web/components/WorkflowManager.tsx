@@ -23,7 +23,13 @@ import { useCanvasStore } from "../store/canvasStore";
 import { compileGraph, errorMessage, importManifest } from "../lib/api";
 import { makeEdge, makeNode, nodeId } from "../lib/graph";
 import { dockerfileToGraph } from "../lib/dockerfile";
-import { TemplateIcon, templates, getAllCategories, getTemplatesByCategory } from "../lib/templates";
+import {
+  TemplateIcon,
+  templates,
+  templateToGraph,
+  getAllCategories,
+  getTemplatesByCategory,
+} from "../lib/templates";
 import {
   WorkflowSummary,
   deleteWorkflow,
@@ -174,24 +180,7 @@ export default function WorkflowManager({ isOpen, onClose, onLoadWorkflow }: Wor
       const template = templates.find(t => t.id === templateId);
       if (!template) return;
 
-      const built: Node[] = template.nodes.map(node =>
-        makeNode(
-          nodeId(node.data.kind),
-          node.data.kind,
-          node.data.name,
-          node.data.namespace || "default",
-          node.data
-        )
-      );
-
-      const builtEdges = template.edges
-        .map(e => {
-          const source = built[e.sourceIdx];
-          const target = built[e.targetIdx];
-          return source && target ? makeEdge(source, target) : null;
-        })
-        .filter((e): e is NonNullable<typeof e> => e !== null);
-
+      const { nodes: built, edges: builtEdges } = templateToGraph(template);
       setGraph(built, builtEdges, template.name);
       setShowTemplates(false);
       onClose();

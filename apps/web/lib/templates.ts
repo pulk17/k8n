@@ -1,4 +1,5 @@
-import { Node } from "reactflow";
+import { Edge, Node } from "reactflow";
+import { makeEdge, makeNode, nodeId } from "./graph";
 
 export type TemplateIcon = "web" | "microservices" | "observability" | "batch";
 
@@ -507,6 +508,37 @@ export const templates: Template[] = [
     ],
   },
 ];
+
+/**
+ * Turns a template into real canvas nodes and edges.
+ *
+ * Lives here rather than in the workflow dialog because the guided tour builds
+ * the same graph, and two copies of this drifted apart the moment one of them
+ * learned about node ids.
+ */
+export function templateToGraph(template: Template): { nodes: Node[]; edges: Edge[] } {
+  const nodes: Node[] = template.nodes.map(node =>
+    makeNode(
+      nodeId(node.data.kind),
+      node.data.kind,
+      node.data.name,
+      node.data.namespace || "default",
+      node.data
+    )
+  );
+
+  const edges = template.edges
+    .map(e => {
+      const source = nodes[e.sourceIdx];
+      const target = nodes[e.targetIdx];
+      return source && target ? makeEdge(source, target) : null;
+    })
+    .filter((e): e is Edge => e !== null);
+
+  // Positions come from the template, not from the layout engine: they were
+  // drawn to read in the order the explanation goes through them.
+  return { nodes, edges };
+}
 
 export function getTemplatesByCategory(category: string): Template[] {
   return templates.filter(t => t.category === category);

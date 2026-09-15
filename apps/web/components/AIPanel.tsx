@@ -5,8 +5,10 @@ import {
   Sparkles, X, Send, Loader2, Wrench, Check, Ban, AlertCircle, BookOpen, Stethoscope,
 } from "lucide-react";
 import { useCanvasStore, GraphPatch } from "../store/canvasStore";
+import { useLearningStore } from "../store/learningStore";
 import { streamChat, fetchAIStatus, ChatTurn, explainNode } from "../lib/ai";
 import { errorMessage } from "../lib/api";
+import { checkGraph } from "../lib/graphChecks";
 
 interface Message {
   role: "user" | "model";
@@ -35,6 +37,7 @@ export default function AIPanel() {
   const abortRef = useRef<AbortController | null>(null);
 
   const { nodes, edges, activeNamespace, selectedNodeId, applyGraphPatch } = useCanvasStore();
+  const depth = useLearningStore(s => s.depth);
 
   useEffect(() => {
     fetchAIStatus().then(s => setEnabled(s.enabled));
@@ -44,9 +47,10 @@ export default function AIPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);
 
-  // Nothing renders at all without a configured key, so the rest of k8n is
-  // unchanged for anyone not using the assistant.
-  if (!enabled) return null;
+  // The panel used to disappear entirely without a key, which reads as a
+  // missing feature rather than an unconfigured one — there was no way to find
+  // out the assistant existed, let alone how to turn it on. It is here either
+  // way now; without a key it explains itself instead of taking questions.
 
   const send = async (text: string) => {
     const question = text.trim();
@@ -77,6 +81,14 @@ export default function AIPanel() {
           history,
           graph: { nodes, edges },
           namespace: activeNamespace,
+          // The same two things the screen is showing: how much this reader
+          // wants explained, and what k8n has already flagged as wrong. Without
+          // the second the assistant goes looking for problems the user is
+          // already staring at.
+          depth,
+          notes: checkGraph(nodes, edges).map(
+            issue => `${issue.title} — ${issue.why} Fix: ${issue.fix}`
+          ),
         },
         event => {
           if (event.type === "text" && event.text) {
@@ -161,11 +173,56 @@ export default function AIPanel() {
       <button
         onClick={() => setOpen(true)}
         className="absolute bottom-4 right-[calc(var(--dock-width,0px)+4rem)] z-30 px-3 py-2 bg-neutral-900/90 hover:bg-neutral-800 backdrop-blur-md border border-neutral-700 rounded-lg shadow-lg flex items-center gap-2 text-sm text-gray-200 transition-colors"
-        title="Ask the k8n assistant"
+        title={enabled ? "Ask the k8n assistant" : "The assistant is not configured yet"}
       >
-        <Sparkles className="w-4 h-4 text-blue-400" />
+        <Sparkles className={`w-4 h-4 ${enabled ? "text-blue-400" : "text-gray-500"}`} />
         Assistant
+        {!enabled && <span className="text-[10px] text-gray-500">off</span>}
       </button>
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <div className="absolute top-16 right-[calc(var(--dock-width,0px)+1rem)] z-30 w-96 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900/95 shadow-2xl backdrop-blur-md">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-gray-500" />
+            <span className="text-sm font-semibold text-gray-100">Assistant</span>
+          </div>
+          <button
+            onClick={() => setOpen(false)}
+            className="rounded p-1 text-gray-400 hover:bg-neutral-800 hover:text-gray-200"
+            aria-label="Close the assistant"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3 p-4">
+          <p className="text-xs leading-relaxed text-gray-400">
+            k8n has an assistant that can read your cluster — resources, logs, events — explain
+            what it finds, and propose changes to the canvas for you to accept or reject. It needs
+            a model to talk to, and none is configured.
+          </p>
+          <div className="rounded border border-neutral-800 bg-neutral-950 p-3">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              To turn it on
+            </p>
+            <code className="block break-all font-mono text-[11px] text-gray-300">
+              GEMINI_API_KEY=your-key
+            </code>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-gray-500">
+              Set it before starting k8n. Choosing a provider from inside the app is coming; for
+              now it is read once at startup.
+            </p>
+          </div>
+          <p className="text-[10px] leading-relaxed text-gray-600">
+            Everything else in k8n works without this, and nothing on your canvas is sent anywhere
+            until you ask the assistant a question.
+          </p>
+        </div>
+      </div>
     );
   }
 

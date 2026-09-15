@@ -17,6 +17,8 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useCanvasStore } from "../../store/canvasStore";
+import { useLearningStore } from "../../store/learningStore";
+import { templates, templateToGraph } from "../../lib/templates";
 import K8sNode from "../../components/K8sNode";
 import ResourceToolbox from "../../components/ResourceToolbox";
 import CanvasToolbar, { ApplyState } from "../../components/CanvasToolbar";
@@ -24,6 +26,8 @@ import Inspector, { INSPECTOR_WIDTH } from "../../components/Inspector";
 import HelmDashboard from "../../components/HelmDashboard";
 import HelmReleaseManager from "../../components/HelmReleaseManager";
 import WorkflowManager from "../../components/WorkflowManager";
+import Welcome from "../../components/Welcome";
+import Tour from "../../components/Tour";
 import KeyboardShortcuts from "../../components/KeyboardShortcuts";
 import DevModeIndicator from "../../components/DevModeIndicator";
 import ApiConnectionError from "../../components/ApiConnectionError";
@@ -74,6 +78,7 @@ function CanvasPageContent() {
     addNode,
     deleteNode,
     saveGraph,
+    setGraph,
     clearCanvas,
     undo,
     redo,
@@ -86,6 +91,8 @@ function CanvasPageContent() {
   const draggingFrom = useRef<string | null>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [showWorkflowManager, setShowWorkflowManager] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [touring, setTouring] = useState(false);
   const [compiling, setCompiling] = useState(false);
   const [compiled, setCompiled] = useState<CompileResult | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -94,7 +101,11 @@ function CanvasPageContent() {
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
 
   const applying = applyState === "dry-running" || applyState === "applying";
-  const inspectorOpen = Boolean(selectedNodeId || selectedEdge);
+  // The dock is opened deliberately — from a card's panel button, a wire, or a
+  // check — rather than by every click on the canvas. Selecting a node still
+  // steers it while it is open.
+  const dockOpen = useCanvasStore(s => s.inspectorOpen);
+  const inspectorOpen = dockOpen && Boolean(selectedNodeId || selectedEdge);
 
   // Warn before losing unsaved work. `dirty` used to be tracked and never read.
   useEffect(() => {
@@ -118,8 +129,13 @@ function CanvasPageContent() {
   }, [loadNamespaces]);
 
   // Imported nodes track the cluster, so their status dots move on their own.
-  // A hand-drawn graph has nothing live to follow, so it opens no stream.
-  const trackingCluster = nodes.some((n) => n.data?.origin === "cluster");
+  // So do the resources a chart renders, once its release is installed — that
+  // is the whole point of drawing them: the card you drew is where you find out
+  // the image would not pull. A hand-drawn graph has nothing live to follow, so
+  // it opens no stream.
+  const trackingCluster = nodes.some(
+    (n) => n.data?.origin === "cluster" || n.data?.origin === "helm"
+  );
   useEffect(() => {
     if (!trackingCluster) return;
     return watchResources(
@@ -131,11 +147,18 @@ function CanvasPageContent() {
     );
   }, [trackingCluster]);
 
-  // Runs once per session: either open the requested workflow, or offer the
-  // manager so the canvas is never just an empty grid on a first visit.
+  // Runs once per session: either open the requested workflow, or — on a first
+  // ever visit — ask how much to explain before anything else happens. After
+  // that first answer it is the workflow manager, as before, so the question is
+  // asked once in the life of the browser rather than every session.
   useEffect(() => {
     if (graphIdToLoad) {
       loadGraph(graphIdToLoad);
+      return;
+    }
+    useLearningStore.getState().load();
+    if (!useLearningStore.getState().chosen) {
+      setShowWelcome(true);
       return;
     }
     if (!sessionStorage.getItem("workflow_opened")) {
@@ -143,6 +166,31 @@ function CanvasPageContent() {
       setShowWorkflowManager(true);
     }
   }, [graphIdToLoad, loadGraph]);
+
+  /** Loads the demo application and walks through it. */
+  const startTour = useCallback(() => {
+    const template = templates.find(t => t.id === "production-web-app") ?? templates[0];
+    const { nodes: built, edges: builtEdges } = templateToGraph(template);
+    setGraph(built, builtEdges, template.name);
+    setShowWelcome(false);
+    setTouring(true);
+    // The graph has to exist before it can be framed.
+    setTimeout(() => reactFlowInstance?.fitView({ padding: 0.25, duration: 400 }), 60);
+  }, [setGraph, reactFlowInstance]);
+
+  /** Centres one card, so the step being read is the card being looked at. */
+  const focusNode = useCallback(
+    (id: string) => {
+      const node = useCanvasStore.getState().nodes.find(n => n.id === id);
+      if (node && reactFlowInstance) {
+        reactFlowInstance.setCenter(node.position.x + 140, node.position.y + 80, {
+          zoom: 1,
+          duration: 400,
+        });
+      }
+    },
+    [reactFlowInstance]
+  );
 
   const handleLoadWorkflow = (type: "new" | "example" | "cluster" | "saved") => {
     setShowWorkflowManager(false);
@@ -200,8 +248,14 @@ function CanvasPageContent() {
     setSelectedEdge(null);
   }, []);
 
+  /** Selects a node *and* opens the dock on it. */
+  const inspectNode = useCallback((id: string) => {
+    useCanvasStore.setState({ selectedNodeId: id, inspectorOpen: true });
+    setSelectedEdge(null);
+  }, []);
+
   const closeInspector = useCallback(() => {
-    useCanvasStore.setState({ selectedNodeId: null });
+    useCanvasStore.setState({ selectedNodeId: null, inspectorOpen: false });
     setSelectedEdge(null);
   }, []);
 
@@ -422,6 +476,16 @@ function CanvasPageContent() {
     });
     node.position = position;
     addNode(node);
+
+    // The new resource becomes the selection, so the keyboard shortcuts and the
+    // dock are already pointed at it. A chart also opens the dock, because a
+    // card that says "Ready to Install" and nothing else is not something
+    // anyone can review — the Chart tab renders what it would create.
+    useCanvasStore.setState(state => ({
+      selectedNodeId: node.id,
+      inspectorOpen: state.inspectorOpen || Boolean(chart),
+    }));
+    setSelectedEdge(null);
   }, [activeNamespace, addNode]);
 
   /**
@@ -532,6 +596,7 @@ function CanvasPageContent() {
         busy={compiling || applying}
         canApply={filteredNodes.length > 0}
         onOpenWorkflows={() => setShowWorkflowManager(true)}
+        onStartTour={startTour}
         onSave={handleSave}
         onRefresh={handleRefreshWorkflow}
         onReviewAndApply={handleReviewAndApply}
@@ -606,6 +671,19 @@ function CanvasPageContent() {
         />
       )}
 
+      {showWelcome && (
+        <Welcome
+          onStartTour={startTour}
+          onSkip={() => {
+            setShowWelcome(false);
+            sessionStorage.setItem("workflow_opened", "true");
+            setShowWorkflowManager(true);
+          }}
+        />
+      )}
+
+      {touring && <Tour onExit={() => setTouring(false)} focusNode={focusNode} />}
+
       <WorkflowManager
         isOpen={showWorkflowManager}
         onClose={() => setShowWorkflowManager(false)}
@@ -675,7 +753,7 @@ function CanvasPageContent() {
           // the only place the canvas can teach why two objects are separate.
           onEdgeClick={(_, edge) => {
             setSelectedEdge(edge);
-            useCanvasStore.setState({ selectedNodeId: null });
+            useCanvasStore.setState({ selectedNodeId: null, inspectorOpen: true });
           }}
           onPaneClick={closeInspector}
           minZoom={0.1}
@@ -697,7 +775,7 @@ function CanvasPageContent() {
                 edgeCount={filteredEdges.length}
                 scopeLabel={activeNamespace === "all" ? "All namespaces" : activeNamespace}
                 issues={issues}
-                onSelectNode={selectNode}
+                onSelectNode={inspectNode}
               />
             </Panel>
           )}
