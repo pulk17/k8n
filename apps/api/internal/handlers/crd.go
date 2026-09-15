@@ -64,4 +64,3 @@ func GetCRDs(clientGetter func() *k8s.Client) gin.HandlerFunc {
 		c.JSON(http.StatusOK, crds)
 	}
 }
-
