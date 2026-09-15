@@ -1,11 +1,12 @@
 "use client";
 
 import { DragEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Layers, Plus, Search, X } from "lucide-react";
+import { ChevronLeft, Layers, PanelLeft, Plus, Search, X } from "lucide-react";
 import { fetchCRDs } from "../lib/api";
 import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS } from "../lib/constants";
 import { conceptFor } from "../lib/concepts";
 import ConnectionLegend from "./ConnectionLegend";
+import { useLearningStore } from "../store/learningStore";
 
 // Kinds you can add to the canvas, in the order they are worth reaching for.
 // Colour is not repeated here: it comes from RESOURCE_COLORS, so the swatch in
@@ -41,6 +42,7 @@ interface ResourceToolboxProps {
 export default function ResourceToolbox({ onAdd }: ResourceToolboxProps) {
   const [crds, setCrds] = useState<{ kind: string; name: string; group: string }[]>([]);
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(true);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -55,7 +57,9 @@ export default function ResourceToolbox({ onAdd }: ResourceToolboxProps) {
       if (target?.matches?.("input, textarea, select")) return;
       if (e.key === "/") {
         e.preventDefault();
-        searchRef.current?.focus();
+        setOpen(true);
+        // Focus after the panel is in the DOM again.
+        requestAnimationFrame(() => searchRef.current?.focus());
       }
     };
     window.addEventListener("keydown", onKey);
@@ -86,9 +90,39 @@ export default function ResourceToolbox({ onAdd }: ResourceToolboxProps) {
 
   const empty = results.length === 0 && matchingCrds.length === 0;
 
+  // Collapsed, it gives the canvas back its left third and leaves one button.
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="absolute left-4 top-16 z-20 flex items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/95 px-3 py-2 text-xs font-medium text-gray-300 shadow-xl backdrop-blur-md transition-colors hover:bg-neutral-800"
+        title="Show the resource palette (/)"
+        aria-label="Show the resource palette"
+        aria-expanded={false}
+      >
+        <PanelLeft className="h-4 w-4" />
+        Resources
+      </button>
+    );
+  }
+
   return (
     <div className="absolute left-4 top-16 bottom-4 z-20 flex w-64 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/95 shadow-xl backdrop-blur-md">
       <div className="border-b border-neutral-800 p-2.5">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+            Resources
+          </h2>
+          <button
+            onClick={() => setOpen(false)}
+            className="rounded p-0.5 text-gray-500 transition-colors hover:bg-neutral-800 hover:text-gray-200"
+            title="Collapse the palette"
+            aria-label="Collapse the resource palette"
+            aria-expanded
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-600" />
           <input
@@ -187,7 +221,11 @@ function KindRow({
   onAdd: (kind: string) => void;
 }) {
   const color = RESOURCE_COLORS[kind] || DEFAULT_RESOURCE_COLOR;
+  const depth = useLearningStore(s => s.depth);
+  // The row still carries the summary as its tooltip at every depth; what
+  // changes is whether it takes up two lines of a list you are scanning.
   const summary = subtitle ?? conceptFor(kind)?.summary;
+  const showSummary = depth !== "expert";
 
   const onDragStart = (event: DragEvent<HTMLButtonElement>) => {
     event.dataTransfer.setData("application/reactflow", "k8sNode");
@@ -210,7 +248,7 @@ function KindRow({
 
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium text-gray-300">{kind}</span>
-        {summary && (
+        {summary && showSummary && (
           <span className="mt-0.5 block truncate text-[10px] leading-snug text-gray-500">
             {summary}
           </span>
