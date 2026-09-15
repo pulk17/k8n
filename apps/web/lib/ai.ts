@@ -1,3 +1,4 @@
+import { TOKEN_HEADER, getToken, reportUnauthorized } from "./session";
 import { API_URL, request } from "./api";
 import { GraphPatch } from "../store/canvasStore";
 
@@ -41,16 +42,22 @@ export async function streamChat(
     history: ChatTurn[];
     graph: { nodes: unknown[]; edges: unknown[] };
     namespace: string;
+    /** How much to explain: the reader's chosen depth. */
+    depth?: string;
+    /** Problems the canvas is already showing, so the answer starts there. */
+    notes?: string[];
   },
   onEvent: (event: AIEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
   const res = await fetch(`${API_URL}/api/ai/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", [TOKEN_HEADER]: getToken() },
     body: JSON.stringify(body),
     signal,
   });
+
+  if (res.status === 401) reportUnauthorized();
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

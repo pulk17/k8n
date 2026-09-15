@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "@fontsource-variable/inter";
 import "./globals.css";
 import Dialogs from "../components/Dialogs";
+import PairGate from "../components/PairGate";
 
 export const metadata: Metadata = {
   title: "k8n - Visual Kubernetes IDE",
@@ -21,6 +22,7 @@ export default function RootLayout({
       <body>
         {children}
         <Dialogs />
+        <PairGate />
       </body>
     </html>
   );

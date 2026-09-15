@@ -12,6 +12,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/user/k8s-graph-controller/backend/internal/auth"
 	"github.com/user/k8s-graph-controller/backend/internal/handlers"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
 	"github.com/user/k8s-graph-controller/backend/internal/mcpserver"
@@ -24,6 +25,46 @@ var (
 
 // mountUI serves the embedded frontend; set only in builds tagged embedui (ui.go).
 var mountUI func(*gin.Engine)
+
+// requireToken rejects anything that reaches the API or the MCP endpoint
+// without the pairing token.
+//
+// The UI itself is served unguarded: it is not secret, and it is what shows the
+// "paste your token" prompt when a browser has not paired yet. /health is open
+// for the container healthcheck, which knows no token; it reports only whether
+// a cluster is reachable.
+func requireToken(token string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Request.URL.Path
+		guarded := strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/mcp")
+		// A CORS preflight carries no custom headers by definition; rejecting it
+		// would fail the real request before it was ever made.
+		if !guarded || c.Request.Method == http.MethodOptions {
+			c.Next()
+			return
+		}
+
+		presented := auth.Presented(c.GetHeader, func(key string) string { return c.Query(key) })
+		if !auth.Matches(token, presented) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"error": "Not paired with this k8n",
+				"hint":  "Open the link k8n printed when it started, or paste its token when asked.",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+// requestLogger is gin's own logger with the token taken out of the query
+// string. The default one prints the raw path, which would put the secret in
+// the terminal, in scrollback, and in anything collecting container logs.
+func requestLogger() gin.HandlerFunc {
+	return gin.LoggerWithFormatter(func(p gin.LogFormatterParams) string {
+		return fmt.Sprintf("[GIN] %3d | %13v | %15s | %-7s %q\n",
+			p.StatusCode, p.Latency, p.ClientIP, p.Method, auth.Redact(p.Path))
+	})
+}
 
 func getK8sClient() *k8s.Client {
 	k8sClientMu.RLock()
@@ -97,8 +138,22 @@ func main() {
 		fmt.Printf("MCP server %q connected with %d tools\n", server.Name, server.Tools)
 	}
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery(), requestLogger())
 	r.Use(cors.New(corsConfig()))
+
+	// Pairing. Every /api and /mcp route needs the token; the UI and /health do
+	// not, because the page has to load in order to ask for the token, and the
+	// container healthcheck has no way to know it.
+	token := ""
+	if !auth.Disabled() {
+		var err error
+		if token, err = auth.Load(); err != nil {
+			fmt.Printf("Could not set up the pairing token: %v\n", err)
+			os.Exit(1)
+		}
+		r.Use(requireToken(token))
+	}
 
 	r.GET("/health", handlers.Health(getK8sClient))
 
@@ -180,8 +235,29 @@ func main() {
 	if host == "" {
 		host = "127.0.0.1"
 	}
+	printStartupBanner(host, port, token)
+
 	if err := r.Run(host + ":" + port); err != nil {
 		fmt.Printf("Server stopped: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// printStartupBanner gives the user the one thing they need: a link that pairs
+// their browser. The token is in the link so that opening it is the whole
+// setup; the UI stores it and takes it out of the address bar.
+func printStartupBanner(host, port, token string) {
+	shown := host
+	if shown == "0.0.0.0" || shown == "::" {
+		shown = "127.0.0.1"
+	}
+
+	fmt.Printf("\n  k8n is running on http://%s:%s\n", shown, port)
+	if token == "" {
+		fmt.Printf("\n  ⚠ Pairing is OFF (K8N_NO_AUTH=true). Anything that can reach this port\n" +
+			"    can read and change your cluster.\n\n")
+		return
+	}
+	fmt.Printf("\n  Open this link to pair your browser:\n\n    http://%s:%s/?%s=%s\n\n", shown, port, auth.QueryParam, token)
+	fmt.Printf("  Treat it like a password: it lets the holder change your cluster.\n\n")
 }

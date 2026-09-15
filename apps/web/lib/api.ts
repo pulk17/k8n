@@ -4,6 +4,8 @@
 // different host.
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
+import { TOKEN_HEADER, getToken, reportUnauthorized, withToken } from "./session";
+
 export interface ContainerSummary {
   name: string;
   image: string;
@@ -146,12 +148,23 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   try {
+    // Every call carries the pairing token. It goes in a header rather than the
+    // URL so it stays out of logs and out of the address bar.
+    const headers: Record<string, string> = {};
+    if (body) headers["Content-Type"] = "application/json";
+    const token = getToken();
+    if (token) headers[TOKEN_HEADER] = token;
+
     const res = await fetch(`${API_URL}${path}`, {
       method,
       signal: controller.signal,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
     });
+
+    // Not paired, or paired with a k8n that has since regenerated its token.
+    // The UI asks for a new one rather than showing a wall of failed requests.
+    if (res.status === 401) reportUnauthorized();
 
     if (!res.ok) {
       let message = `${res.status} ${res.statusText}`;
@@ -210,7 +223,9 @@ export function watchResources(
 ): () => void {
   const query =
     namespace && namespace !== "all" ? `?namespace=${encodeURIComponent(namespace)}` : "";
-  const source = new EventSource(`${API_URL}/api/cluster/watch${query}`);
+  // EventSource cannot set headers, so this one carries the token in the query.
+  // The server redacts it from its request log.
+  const source = new EventSource(withToken(`${API_URL}/api/cluster/watch${query}`));
   const byUid = new Map<string, K8sResource>();
 
   source.onmessage = event => {
@@ -350,9 +365,19 @@ export const searchHelmCharts = (query: string) =>
 export const installHelmChart = (params: ChartRequest) =>
   request<HelmRelease>("/api/helm/install", { method: "POST", body: params, timeoutMs: 180000 });
 
-// A HelmRelease node is rendered into the manifest preview by the compiler
-// (compile returns it as `helmYaml`), so nothing here calls /api/helm/template
-// directly. The endpoint stays for MCP clients and for curl.
+/**
+ * Renders a chart to YAML without touching the cluster.
+ *
+ * The manifest preview gets this from the compiler (as `helmYaml`), but a node
+ * needs it on its own, the moment it is dropped: a chart is the one resource
+ * whose contents you cannot guess from the card.
+ */
+export const templateHelmChart = (params: ChartRequest) =>
+  request<{ yaml: string }>("/api/helm/template", {
+    method: "POST",
+    body: params,
+    timeoutMs: 120000,
+  }).then(r => r?.yaml ?? "");
 
 export const fetchHelmReleases = () =>
   request<HelmRelease[]>("/api/helm/releases").then(r => r ?? []);

@@ -60,6 +60,9 @@ services:
     environment:
       - DATABASE_URL=postgres://k8n:${POSTGRES_PASSWORD:-k8npassword}@db:5432/k8n_db?sslmode=disable
       - GIN_MODE=release
+      # Pairing token. Leave unset and one is generated inside the container —
+      # read it from `docker compose logs api`. Set it here for a stable value.
+      - K8N_TOKEN=${K8N_TOKEN:-}
       - ALLOWED_ORIGINS=http://localhost,http://localhost:${K8N_PORT:-80},${ALLOWED_ORIGINS:-}
       # Optional. Without a key the AI panel is hidden and k8n works normally.
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
