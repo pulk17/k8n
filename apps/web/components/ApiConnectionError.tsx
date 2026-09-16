@@ -1,120 +1,102 @@
 'use client';
 
-import { AlertCircle, RefreshCw, Terminal } from 'lucide-react';
+import { Download, MousePointerClick, RefreshCw, Terminal } from 'lucide-react';
 import { API_URL } from '../lib/api';
+
+const RELEASES = 'https://github.com/pulk17/k8n/releases';
 
 interface ApiConnectionErrorProps {
   error: string;
   onRetry?: () => void;
+  /** Opens the canvas with no engine behind it. */
+  onExplore?: () => void;
 }
 
-export default function ApiConnectionError({ error, onRetry }: ApiConnectionErrorProps) {
+/**
+ * What you see when there is no k8n engine to talk to.
+ *
+ * This used to be a developer's error page — a stack of "go run main.go"
+ * instructions — which is the wrong thing to show the two people who actually
+ * meet it: someone who opened a hosted copy of this page with nothing running
+ * locally, and someone whose k8n has stopped. Both need the same fact first,
+ * which is that k8n runs on your own machine, next to your kubeconfig.
+ *
+ * The canvas itself needs no engine: you can draw a graph, read what every
+ * object is for, and see the checks with nothing running at all. So it offers
+ * that rather than being a dead end.
+ */
+export default function ApiConnectionError({ error, onRetry, onExplore }: ApiConnectionErrorProps) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-neutral-950 p-4">
-      <div className="max-w-2xl w-full bg-white dark:bg-neutral-900 border border-red-200 dark:border-red-900/50 rounded-lg shadow-lg overflow-hidden">
-        {/* Header */}
-        <div className="bg-red-50 dark:bg-red-950/20 border-b border-red-200 dark:border-red-900/50 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
-            <h2 className="text-xl font-bold text-red-900 dark:text-red-300">
-              API Connection Error
-            </h2>
-          </div>
+    <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-4">
+      <div className="w-full max-w-xl overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-xl">
+        <div className="border-b border-neutral-800 px-6 py-5">
+          <h2 className="text-lg font-semibold text-gray-100">k8n runs on your machine</h2>
+          <p className="mt-1.5 text-xs leading-relaxed text-gray-400">
+            The canvas is just a page; the part that talks to Kubernetes is a single binary you run
+            yourself, beside your kubeconfig. Nothing here can reach a cluster until that is
+            running — which is also why your cluster credentials never leave your computer.
+          </p>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Error Message */}
-          <div className="bg-red-50 dark:bg-red-950/10 border border-red-200 dark:border-red-900/30 rounded p-4">
-            <p className="text-sm text-red-800 dark:text-red-300 font-medium mb-2">
-              Error Details:
-            </p>
-            <p className="text-sm text-red-700 dark:text-red-400 font-mono">
-              {error}
-            </p>
-          </div>
-
-          {/* API URL */}
-          <div>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-              Attempting to connect to:
-            </p>
-            <code className="block bg-gray-100 dark:bg-neutral-800 text-gray-900 dark:text-gray-100 px-3 py-2 rounded font-mono text-sm">
-              {API_URL}
-            </code>
-          </div>
-
-          {/* Instructions */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <Terminal className="w-5 h-5" />
-              How to Fix
-            </h3>
-
-            <div className="space-y-3">
-              <div className="bg-gray-50 dark:bg-neutral-800 rounded p-4">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                  1. Start the API server
-                </p>
-                <code className="block bg-gray-900 text-green-400 px-3 py-2 rounded font-mono text-sm">
-                  cd apps/api && go run main.go
-                </code>
-              </div>
-
-              <div className="bg-gray-50 dark:bg-neutral-800 rounded p-4">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                  2. Verify the server is running
-                </p>
-                <code className="block bg-gray-900 text-green-400 px-3 py-2 rounded font-mono text-sm">
-                  curl {API_URL}/health
-                </code>
-              </div>
-
-              <div className="bg-gray-50 dark:bg-neutral-800 rounded p-4">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
-                  3. Check your environment variables
-                </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
-                  Create a <code className="bg-gray-200 dark:bg-neutral-700 px-1 rounded">.env.local</code> file in <code className="bg-gray-200 dark:bg-neutral-700 px-1 rounded">apps/web/</code>:
-                </p>
-                <code className="block bg-gray-900 text-green-400 px-3 py-2 rounded font-mono text-sm">
-                  NEXT_PUBLIC_API_URL=http://localhost:8080
-                </code>
-              </div>
-            </div>
-          </div>
-
-          {/* Common Issues */}
-          <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/30 rounded p-4">
-            <p className="text-sm font-medium text-blue-900 dark:text-blue-300 mb-2">
-              Common causes
-            </p>
-            <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1 list-disc list-inside">
-              <li>API server not started</li>
-              <li>Wrong port (should be 8080)</li>
-              <li>Firewall blocking connection</li>
-              <li>CORS issues (check browser console)</li>
-            </ul>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3">
-            {onRetry && (
-              <button
-                onClick={onRetry}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors font-medium"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Retry Connection
-              </button>
-            )}
-            <a
-              href="/connect"
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded transition-colors font-medium"
+        <div className="space-y-3 p-6">
+          {onExplore && (
+            <button
+              onClick={onExplore}
+              className="flex w-full items-center gap-3 rounded-md border border-blue-800 bg-blue-950/40 px-4 py-3 text-left transition-colors hover:border-blue-700 hover:bg-blue-950/70"
             >
-              Go to Connect Page
-            </a>
+              <MousePointerClick className="h-4 w-4 flex-shrink-0 text-blue-300" />
+              <span>
+                <span className="block text-sm font-medium text-blue-100">
+                  Look around without a cluster
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed text-blue-200/70">
+                  Draw a graph, read what each object does, see the checks. Compiling and applying
+                  need the engine.
+                </span>
+              </span>
+            </button>
+          )}
+
+          <a
+            href={RELEASES}
+            target="_blank"
+            rel="noreferrer"
+            className="flex w-full items-center gap-3 rounded-md border border-neutral-800 px-4 py-3 transition-colors hover:border-neutral-700 hover:bg-neutral-800/50"
+          >
+            <Download className="h-4 w-4 flex-shrink-0 text-gray-400" />
+            <span>
+              <span className="block text-sm font-medium text-gray-200">Download k8n</span>
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-500">
+                One file for macOS, Linux or Windows. Run it and it prints a link to open.
+              </span>
+            </span>
+          </a>
+
+          <div className="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+            <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              <Terminal className="h-3 w-3" />
+              Already running it?
+            </p>
+            <p className="text-[11px] leading-relaxed text-gray-400">
+              This page tried{' '}
+              <code className="font-mono text-gray-300">
+                {API_URL || "this page's own address"}
+              </code>
+              . Check that it matches the address k8n printed, and that you opened its pairing
+              link.
+            </p>
+            <p className="mt-2 break-all font-mono text-[10px] text-gray-600">{error}</p>
           </div>
+
+          {onRetry && (
+            <button
+              onClick={onRetry}
+              className="flex w-full items-center justify-center gap-2 rounded border border-neutral-800 px-4 py-2 text-xs text-gray-400 transition-colors hover:border-neutral-700 hover:text-gray-200"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Try again
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -46,6 +46,9 @@ export interface CanvasState {
   /** Whether the right-hand dock is open. Selecting a node no longer opens it:
       the card itself expands for the common edits, and this is for the rest. */
   inspectorOpen: boolean;
+  /** No engine to talk to: the canvas works, the cluster half does not. This is
+      what a hosted copy of the page looks like before you run k8n locally. */
+  offline: boolean;
   dirty: boolean;
   showPods: boolean;
   showSystemNamespaces: boolean;
@@ -61,6 +64,7 @@ export interface CanvasState {
   setGraphName: (name: string) => void;
   setSelectedNodeId: (id: string | null) => void;
   setInspectorOpen: (open: boolean) => void;
+  setOffline: (offline: boolean) => void;
   /** Opens the dock on a node in one step, for the card's own button. */
   inspectNode: (id: string) => void;
   setShowPods: (show: boolean) => void;
@@ -124,6 +128,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   error: null,
   selectedNodeId: null,
   inspectorOpen: false,
+  offline: false,
   dirty: false,
   showPods: false,
   showSystemNamespaces: false,
@@ -193,6 +198,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setSelectedNodeId: id => set({ selectedNodeId: id }),
 
   setInspectorOpen: open => set({ inspectorOpen: open }),
+
+  // Going offline clears the error with it: the canvas is about to work, and a
+  // red banner about an unreachable API would be describing a decision the user
+  // already made.
+  setOffline: offline => set({ offline, error: null }),
 
   inspectNode: id => set({ selectedNodeId: id, inspectorOpen: true }),
   setShowPods: show => {

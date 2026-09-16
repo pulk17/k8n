@@ -40,6 +40,7 @@ export default function AIPanel() {
   const abortRef = useRef<AbortController | null>(null);
 
   const { nodes, edges, activeNamespace, selectedNodeId, applyGraphPatch } = useCanvasStore();
+  const offline = useCanvasStore(s => s.offline);
   const depth = useLearningStore(s => s.depth);
 
   useEffect(() => {
@@ -182,6 +183,34 @@ export default function AIPanel() {
         Assistant
         {!enabled && <span className="text-[10px] text-gray-500">off</span>}
       </button>
+    );
+  }
+
+  // With no engine there is nothing to configure: the key would have nowhere to
+  // live and no cluster to read. Say that instead of showing a form that cannot
+  // save.
+  if (offline) {
+    return (
+      <div className="absolute top-16 right-[calc(var(--dock-width,0px)+1rem)] z-30 w-96 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900/95 shadow-2xl backdrop-blur-md">
+        <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-gray-500" />
+            <span className="text-sm font-semibold text-gray-100">Assistant</span>
+          </div>
+          <button
+            onClick={() => setOpen(false)}
+            className="rounded p-1 text-gray-400 hover:bg-neutral-800 hover:text-gray-200"
+            aria-label="Close the assistant"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="p-4 text-xs leading-relaxed text-gray-400">
+          The assistant runs inside the k8n on your machine — it reads your cluster through the
+          same engine that applies your graph, and your model key is stored there. Nothing to
+          configure from this page.
+        </p>
+      </div>
     );
   }
 

@@ -33,7 +33,10 @@ import DevModeIndicator from "../../components/DevModeIndicator";
 import ApiConnectionError from "../../components/ApiConnectionError";
 import GraphChecks from "../../components/GraphChecks";
 import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
-import { ApiError, CompileResult, applyYaml, compileGraph, errorMessage, installHelmChart, watchResources } from "../../lib/api";
+import {
+  ApiError, CompileResult, applyYaml, compileGraph, errorMessage, fetchHealth, installHelmChart,
+  watchResources,
+} from "../../lib/api";
 import { isValidConnection, validTargetsFor } from "../../lib/connections";
 import { defaultsForKind } from "../../lib/nodeSchema";
 import { makeNode, nodeId, NodeData } from "../../lib/graph";
@@ -105,6 +108,7 @@ function CanvasPageContent() {
   // check — rather than by every click on the canvas. Selecting a node still
   // steers it while it is open.
   const dockOpen = useCanvasStore(s => s.inspectorOpen);
+  const offline = useCanvasStore(s => s.offline);
   const inspectorOpen = dockOpen && Boolean(selectedNodeId || selectedEdge);
 
   // Warn before losing unsaved work. `dirty` used to be tracked and never read.
@@ -127,6 +131,23 @@ function CanvasPageContent() {
   useEffect(() => {
     loadNamespaces();
   }, [loadNamespaces]);
+
+  // One probe decides whether there is an engine behind this page. Without it
+  // the canvas still works — it is the cluster half that cannot — and saying so
+  // once is better than letting every panel fail separately.
+  useEffect(() => {
+    let cancelled = false;
+    fetchHealth()
+      .then(() => {
+        if (!cancelled) useCanvasStore.getState().setOffline(false);
+      })
+      .catch(() => {
+        if (!cancelled) useCanvasStore.getState().setOffline(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Imported nodes track the cluster, so their status dots move on their own.
   // So do the resources a chart renders, once its release is installed — that
@@ -378,6 +399,14 @@ function CanvasPageContent() {
 
   /** Compiles the graph and opens the preview; nothing reaches the cluster yet. */
   const handlePreview = useCallback(async () => {
+    if (useCanvasStore.getState().offline) {
+      notify(
+        "Compiling needs the k8n engine on your machine — the page cannot do it on its own.",
+        "info"
+      );
+      return;
+    }
+
     setErrors([]);
     setCompiling(true);
     try {
@@ -563,24 +592,26 @@ function CanvasPageContent() {
     );
   }
 
+  // An empty canvas plus an error means the engine did not answer — whatever it
+  // said. This used to be gated on a message ("Cannot connect to API server")
+  // that the API client never produces, so the screen explaining what k8n is
+  // never appeared; everybody got a bare red box instead. The landing screen
+  // carries the real error anyway.
   if (error && nodes.length === 0) {
-    if (error.includes("Cannot connect to API server")) {
-      return <ApiConnectionError error={error} onRetry={hydrateGraph} />;
-    }
-
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-neutral-950">
-        <div className="max-w-md rounded-lg border border-red-900/50 bg-neutral-900 p-8">
-          <h2 className="mb-2 text-xl font-bold text-red-400">Connection Error</h2>
-          <p className="mb-4 text-gray-300">{error}</p>
-          <a
-            href="/connect"
-            className="block w-full rounded bg-blue-600 px-4 py-2 text-center font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            Go to Connect Page
-          </a>
-        </div>
-      </div>
+      <ApiConnectionError
+        error={error}
+        onRetry={hydrateGraph}
+        onExplore={() => {
+          // The canvas, the checks and every explanation work with no engine at
+          // all, so someone who arrived at a hosted page can still see what this
+          // is before downloading anything.
+          useCanvasStore.getState().setOffline(true);
+          const template = templates.find(t => t.id === "production-web-app") ?? templates[0];
+          const { nodes: built, edges: builtEdges } = templateToGraph(template);
+          setGraph(built, builtEdges, template.name);
+        }}
+      />
     );
   }
 
@@ -612,6 +643,23 @@ function CanvasPageContent() {
         showSystemNamespaces={showSystemNamespaces}
         onShowSystemNamespacesChange={setShowSystemNamespaces}
       />
+
+      {offline && (
+        <div className="absolute inset-x-0 top-12 z-40 flex items-center justify-center gap-2 border-b border-blue-900/50 bg-blue-950/60 px-4 py-1.5 text-[11px] text-blue-200 backdrop-blur-sm">
+          <span>
+            No cluster connected — draw, read and check freely. Compiling and applying happen in
+            the k8n you run on your own machine.
+          </span>
+          <a
+            href="https://github.com/pulk17/k8n/releases"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-blue-300 underline underline-offset-2 hover:text-blue-100"
+          >
+            Get it
+          </a>
+        </div>
+      )}
 
       <ResourceToolbox onAdd={addAtCentre} />
       <HelmDashboard />

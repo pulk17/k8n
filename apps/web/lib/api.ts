@@ -204,6 +204,18 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 }
 
+/**
+ * Is there an engine at all?
+ *
+ * /health needs no pairing token, which makes it the one honest way for a page
+ * to find out whether it is talking to a running k8n — a hosted copy of this
+ * page with nothing behind it looks exactly like a k8n that has stopped.
+ */
+export const fetchHealth = () =>
+  request<{ status: string; kubernetes: string; database: string }>("/health", {
+    timeoutMs: 5000,
+  });
+
 export const fetchResources = (namespace?: string) =>
   request<K8sResource[]>(
     `/api/cluster/resources${namespace && namespace !== "all" ? `?namespace=${encodeURIComponent(namespace)}` : ""}`
