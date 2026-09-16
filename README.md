@@ -47,6 +47,13 @@ It prints a link. Open it:
     http://127.0.0.1:8080/?t=zx8Q…
 ```
 
+Or skip the copying entirely — `--open` starts k8n and opens the paired link
+for you, which is what a desktop shortcut should point at:
+
+```bash
+./k8n --open --port 8090
+```
+
 That link carries a pairing token, because every route here can change your
 cluster and there is no login. Opening it is the whole setup — k8n saves the
 token and takes it back out of the address bar. [SECURITY.md](SECURITY.md)
@@ -131,7 +138,7 @@ Everything is optional. Copy [.env.example](.env.example) if you want a file.
 
 | Variable | Does |
 |---|---|
-| `API_PORT` | Port to listen on (default 8080) |
+| `API_PORT` | Port to listen on (default 8080); `--port` wins over it |
 | `API_HOST` | Interfaces to bind; loopback by default |
 | `K8N_TOKEN` | Fixed pairing token; otherwise generated and saved to `~/.k8n/token` |
 | `K8N_NO_AUTH` | `true` turns pairing off — trusted networks only |

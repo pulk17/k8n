@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -116,7 +120,48 @@ func corsConfig() cors.Config {
 	}
 }
 
+var (
+	openFlag = flag.Bool("open", false, "open the paired link in your browser once k8n is listening")
+	portFlag = flag.String("port", "", "port to listen on (overrides API_PORT)")
+)
+
+// openWhenReady waits for the server to actually accept a connection, then
+// hands the browser the pairing link. Opening it immediately would race the
+// listener and land on a refused connection.
+func openWhenReady(port, token string) {
+	address := net.JoinHostPort("127.0.0.1", port)
+	for i := 0; i < 100; i++ {
+		conn, err := net.DialTimeout("tcp", address, 250*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			url := "http://" + address + "/"
+			if token != "" {
+				url += "?" + auth.QueryParam + "=" + token
+			}
+			if err := openInBrowser(url); err != nil {
+				fmt.Printf("Could not open a browser: %v\n", err)
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	fmt.Println("k8n did not start in time to open a browser.")
+}
+
+func openInBrowser(url string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		return exec.Command("open", url).Start()
+	default:
+		return exec.Command("xdg-open", url).Start()
+	}
+}
+
 func main() {
+	flag.Parse()
+
 	var err error
 	if k8sClient, err = k8s.NewClient(""); err != nil {
 		fmt.Printf("No cluster connection yet: %v\n", err)
@@ -233,7 +278,10 @@ func main() {
 		mountUI(r)
 	}
 
-	port := os.Getenv("API_PORT")
+	port := *portFlag
+	if port == "" {
+		port = os.Getenv("API_PORT")
+	}
 	if port == "" {
 		port = "8080"
 	}
@@ -247,6 +295,12 @@ func main() {
 		host = "127.0.0.1"
 	}
 	printStartupBanner(host, port, token)
+
+	// --open is for a desktop shortcut: start k8n and land in the app, paired,
+	// without anyone having to copy a token out of a terminal.
+	if *openFlag {
+		go openWhenReady(port, token)
+	}
 
 	if err := r.Run(host + ":" + port); err != nil {
 		fmt.Printf("Server stopped: %v\n", err)
