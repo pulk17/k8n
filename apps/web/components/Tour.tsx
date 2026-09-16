@@ -113,12 +113,16 @@ export default function Tour({
 
   const step = steps[Math.min(index, steps.length - 1)];
 
-  // Selecting the card the step is about is what ties the words to the canvas.
+  // Selecting the card the step is about is what ties the words to the canvas —
+  // it has to be a real selection, so the card is actually highlighted.
+  const stepNodeId = step?.nodeId;
   useEffect(() => {
-    if (!step?.nodeId) return;
-    useCanvasStore.setState({ selectedNodeId: step.nodeId });
-    focusNode(step.nodeId);
-  }, [step, focusNode]);
+    if (!stepNodeId) return;
+    useCanvasStore.getState().selectOnly(stepNodeId);
+    focusNode(stepNodeId);
+    // Keyed on the id, not the step object: the steps are rebuilt whenever the
+    // nodes change, and selecting changes the nodes.
+  }, [stepNodeId, focusNode]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

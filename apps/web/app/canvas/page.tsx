@@ -265,13 +265,14 @@ function CanvasPageContent() {
   }, [filteredNodes, issues]);
 
   const selectNode = useCallback((id: string) => {
-    useCanvasStore.setState({ selectedNodeId: id });
+    useCanvasStore.getState().selectOnly(id);
     setSelectedEdge(null);
   }, []);
 
   /** Selects a node *and* opens the dock on it. */
   const inspectNode = useCallback((id: string) => {
-    useCanvasStore.setState({ selectedNodeId: id, inspectorOpen: true });
+    useCanvasStore.getState().selectOnly(id);
+    useCanvasStore.setState({ inspectorOpen: true });
     setSelectedEdge(null);
   }, []);
 

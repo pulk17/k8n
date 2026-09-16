@@ -67,6 +67,8 @@ export interface CanvasState {
   setOffline: (offline: boolean) => void;
   /** Opens the dock on a node in one step, for the card's own button. */
   inspectNode: (id: string) => void;
+  /** Selects one node and deselects the rest, the way clicking it would. */
+  selectOnly: (id: string) => void;
   setShowPods: (show: boolean) => void;
   setShowSystemNamespaces: (show: boolean) => void;
   updateNodeData: (nodeId: string, data: Partial<NodeData>) => void;
@@ -205,6 +207,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   setOffline: offline => set({ offline, error: null }),
 
   inspectNode: id => set({ selectedNodeId: id, inspectorOpen: true }),
+
+  // React Flow draws the highlight from `selected` on the node itself, not from
+  // our selectedNodeId — so anything that selects a node without going through
+  // a click (the tour, a failed check) has to say so here too, or it points at
+  // a card that looks exactly like every other card.
+  selectOnly: id => {
+    const nodes = get().nodes;
+    // Only write a new array when the selection actually moves. Handing out a
+    // fresh array every time makes anything deriving from `nodes` recompute,
+    // and a caller that re-selects in response to that derivation spins.
+    if (!nodes.some(node => node.selected !== (node.id === id))) {
+      set({ selectedNodeId: id });
+      return;
+    }
+    set({
+      selectedNodeId: id,
+      nodes: nodes.map(node =>
+        node.selected === (node.id === id) ? node : { ...node, selected: node.id === id }
+      ),
+    });
+  },
   setShowPods: show => {
     set({ showPods: show });
     if (get().nodes.some(n => n.data?.origin === "cluster")) get().hydrateGraph();

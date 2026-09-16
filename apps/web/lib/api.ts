@@ -485,7 +485,10 @@ export const deleteResource = (
   namespace: string,
   force = false
 ) =>
-  request<{ message: string }>(`/api/resource/delete${force ? "?force=true" : ""}`, {
-    method: "DELETE",
-    body: { kind, name, namespace },
-  });
+  request<{ message: string; terminating?: boolean; hint?: string }>(
+    `/api/resource/delete${force ? "?force=true" : ""}`,
+    {
+      method: "DELETE",
+      body: { kind, name, namespace },
+    }
+  );

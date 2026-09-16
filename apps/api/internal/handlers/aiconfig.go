@@ -100,7 +100,9 @@ func TestAIConfig() gin.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 45*time.Second)
+		// Short on purpose: this asks for one word. Waiting 45 seconds to be told
+		// the provider is busy is worse than being told in 20.
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
 		defer cancel()
 
 		client, err := ai.NewClient(ctx, cfg)
@@ -125,7 +127,8 @@ func TestAIConfig() gin.HandlerFunc {
 			},
 		)
 		if runErr != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": runErr.Error()})
+			message, hint := explainProviderError(runErr)
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": message, "hint": hint})
 			return
 		}
 
@@ -160,6 +163,40 @@ func ForgetAIConfig() gin.HandlerFunc {
 			"source":   cfg.Source,
 		})
 	}
+}
+
+// explainProviderError turns a provider's own words into something that says
+// whether the problem is the key, the model, or the provider having a bad day —
+// which is the only thing the person pressing Test needs to know.
+func explainProviderError(err error) (message, hint string) {
+	text := err.Error()
+	lower := strings.ToLower(text)
+
+	switch {
+	case strings.Contains(lower, "deadline") || strings.Contains(lower, "timeout") ||
+		strings.Contains(lower, "context canceled") || strings.Contains(text, "504"):
+		return "The provider did not answer in time.",
+			"Usually the model being busy rather than anything wrong with your settings. Try again, or pick a smaller model."
+	case strings.Contains(text, "503") || strings.Contains(lower, "unavailable") ||
+		strings.Contains(lower, "overloaded") || strings.Contains(lower, "high demand"):
+		return "The provider says it is overloaded right now.",
+			"Nothing is wrong with your key. Try again in a minute, or choose another model."
+	case strings.Contains(text, "429") || strings.Contains(lower, "rate limit") ||
+		strings.Contains(lower, "quota"):
+		return "You have hit the provider's rate limit or quota.",
+			"Wait, or check the billing and limits on your provider account."
+	case strings.Contains(text, "401") || strings.Contains(text, "403") ||
+		strings.Contains(lower, "api key") || strings.Contains(lower, "unauthenticated") ||
+		strings.Contains(lower, "permission denied"):
+		return "The provider rejected the key.",
+			"Check it was pasted whole, and that it belongs to the provider you picked."
+	case strings.Contains(text, "404") || strings.Contains(lower, "not found") ||
+		strings.Contains(lower, "does not exist") || strings.Contains(lower, "unknown model"):
+		return "That model name does not exist at this provider.",
+			"Model names change often — check the provider's own list."
+	}
+
+	return truncateReply(text), ""
 }
 
 func truncateReply(s string) string {

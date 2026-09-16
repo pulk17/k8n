@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
 	"helm.sh/helm/v3/pkg/action"
@@ -156,6 +157,12 @@ func Template(client *k8s.Client, o Options) (string, error) {
 	install.Replace = true
 	install.ClientOnly = client == nil || client.Config == nil
 	install.ChartPathOptions = chartPathOptions(o)
+	// Previewing is reading, not installing. Plenty of published charts ship a
+	// values.schema.json that is not valid JSON Schema itself — draft 2020-12
+	// rejects the "$id: '#/properties/x'" style several chart generators emit —
+	// and refusing to *show* someone a chart because of a bug in the chart's own
+	// schema helps nobody. Installing still validates.
+	install.SkipSchemaValidation = true
 
 	chart, err := locate(install, o)
 	if err != nil {
@@ -195,7 +202,24 @@ func Install(client *k8s.Client, o Options) (*release.Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	return install.Run(chart, values)
+
+	rel, err := install.Run(chart, values)
+	if err != nil && IsBrokenSchema(err) {
+		// The chart's own values.schema.json is not valid JSON Schema. Checking
+		// values against a schema that does not parse protects nobody, and
+		// refusing to install leaves the user with no way forward at all — so
+		// install without it, exactly as `helm --skip-schema-validation` does.
+		install.SkipSchemaValidation = true
+		return install.Run(chart, values)
+	}
+	return rel, err
+}
+
+// IsBrokenSchema reports a failure caused by the chart's schema being invalid,
+// rather than by the values being wrong. Helm says the same long thing either
+// way; this is the half that is not the user's fault.
+func IsBrokenSchema(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "is not valid against metaschema")
 }
 
 // Upgrade updates an existing release, honouring the requested chart version.

@@ -117,7 +117,12 @@ export default function InspectorChart({ node }: { node: { id: string; data: Nod
       {error && (
         <div className="rounded border border-red-900/50 bg-red-950/20 p-2.5">
           <p className="text-[11px] font-medium text-red-300">Could not render this chart</p>
-          <p className="mt-1 text-[10px] leading-relaxed text-gray-400">{error}</p>
+          {/* Helm's failures can be thousands of characters of JSON Schema
+              paths. The first lines say what went wrong; the rest is the same
+              thing again for every field. */}
+          <p className="mt-1 max-h-32 overflow-y-auto text-[10px] leading-relaxed text-gray-400">
+            {error.length > 400 ? `${error.slice(0, 400)}…` : error}
+          </p>
           <p className="mt-1 text-[10px] leading-relaxed text-gray-500">
             Rendering downloads the chart and asks the cluster which API versions it supports, so
             it needs both internet access and a connected cluster.

@@ -105,6 +105,18 @@ func DeleteResourceHandler(getClient ClientGetter) gin.HandlerFunc {
 			})
 			return
 		}
+		// Accepted, but something is holding it. Not an error — a state, and one
+		// the user needs told about, because the object stays on screen.
+		var pending *PendingDeletionError
+		if errors.As(err, &pending) {
+			c.JSON(http.StatusOK, gin.H{
+				"message":     "Marked for deletion, but it is still terminating",
+				"terminating": true,
+				"details":     pending.Error(),
+				"hint":        pending.Hint(),
+			})
+			return
+		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete resource", "details": err.Error()})
 			return

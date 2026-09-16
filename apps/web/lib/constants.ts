@@ -82,6 +82,8 @@ const STATUS_TONES: Record<string, StatusTone> = {
   // Set on an imported node once the resource stops coming back from the
   // cluster, so a deleted thing does not sit there looking healthy.
   Deleted: "idle",
+  // Marked for deletion, and still here: a finalizer has it.
+  Terminating: "warn",
   "Not Deployed": "idle",
   Unknown: "idle",
 };

@@ -154,6 +154,20 @@ func containerSummaries(containers []corev1.Container) []ContainerSummary {
 }
 
 // GetClusterResources fetches all resource types concurrently with a timeout.
+
+// whenTerminating reports "Terminating" for an object the API server has marked
+// for deletion but that something is still holding.
+//
+// Without this a Service stuck behind a finalizer — which is every LoadBalancer
+// on a cluster with no load balancer to clean up — keeps saying "Active" long
+// after someone deleted it, and k8n looks like it ignored them.
+func whenTerminating(deleted *metav1.Time, status string) string {
+	if deleted != nil {
+		return "Terminating"
+	}
+	return status
+}
+
 func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client := clientGetter()
@@ -314,7 +328,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:          p.Namespace,
 				Labels:             p.Labels,
 				Annotations:        p.Annotations,
-				Status:             status,
+				Status:             whenTerminating(p.DeletionTimestamp, status),
 				StatusMessage:      statusMessage,
 				UID:                string(p.UID),
 				OwnerReferences:    owners,
@@ -375,7 +389,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:          d.Namespace,
 				Labels:             d.Labels,
 				Annotations:        d.Annotations,
-				Status:             status,
+				Status:             whenTerminating(d.DeletionTimestamp, status),
 				UID:                string(d.UID),
 				Selector:           selector,
 				CreatedAt:          d.CreationTimestamp.Format("2006-01-02 15:04:05"),
@@ -412,7 +426,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Name:            rs.Name,
 				Namespace:       rs.Namespace,
 				Labels:          rs.Labels,
-				Status:          "Active",
+				Status:          whenTerminating(rs.DeletionTimestamp, "Active"),
 				UID:             string(rs.UID),
 				OwnerReferences: owners,
 			})
@@ -451,7 +465,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   s.Namespace,
 				Labels:      s.Labels,
 				Annotations: s.Annotations,
-				Status:      "Active",
+				Status:      whenTerminating(s.DeletionTimestamp, "Active"),
 				UID:         string(s.UID),
 				Selector:    s.Spec.Selector,
 				CreatedAt:   s.CreationTimestamp.Format("2006-01-02 15:04:05"),
@@ -490,7 +504,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   cm.Namespace,
 				Labels:      cm.Labels,
 				Annotations: cm.Annotations,
-				Status:      "Active",
+				Status:      whenTerminating(cm.DeletionTimestamp, "Active"),
 				UID:         string(cm.UID),
 				CreatedAt:   cm.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				DataKeys:    dataKeys,
@@ -540,7 +554,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:          ds.Namespace,
 				Labels:             ds.Labels,
 				Annotations:        ds.Annotations,
-				Status:             status,
+				Status:             whenTerminating(ds.DeletionTimestamp, status),
 				UID:                string(ds.UID),
 				Selector:           selector,
 				CreatedAt:          ds.CreationTimestamp.Format("2006-01-02 15:04:05"),
@@ -597,7 +611,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:          sts.Namespace,
 				Labels:             sts.Labels,
 				Annotations:        sts.Annotations,
-				Status:             status,
+				Status:             whenTerminating(sts.DeletionTimestamp, status),
 				UID:                string(sts.UID),
 				Selector:           selector,
 				CreatedAt:          sts.CreationTimestamp.Format("2006-01-02 15:04:05"),
@@ -637,7 +651,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   secret.Namespace,
 				Labels:      secret.Labels,
 				Annotations: secret.Annotations,
-				Status:      "Active",
+				Status:      whenTerminating(secret.DeletionTimestamp, "Active"),
 				UID:         string(secret.UID),
 				CreatedAt:   secret.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				DataKeys:    dataKeys,
@@ -693,7 +707,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   ing.Namespace,
 				Labels:      ing.Labels,
 				Annotations: ing.Annotations,
-				Status:      "Active",
+				Status:      whenTerminating(ing.DeletionTimestamp, "Active"),
 				UID:         string(ing.UID),
 				CreatedAt:   ing.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				Backends:    backends,
@@ -729,7 +743,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   pvc.Namespace,
 				Labels:      pvc.Labels,
 				Annotations: pvc.Annotations,
-				Status:      string(pvc.Status.Phase),
+				Status:      whenTerminating(pvc.DeletionTimestamp, string(pvc.Status.Phase)),
 				UID:         string(pvc.UID),
 				CreatedAt:   pvc.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				StorageSize: storage,
@@ -761,7 +775,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:       hpa.Namespace,
 				Labels:          hpa.Labels,
 				Annotations:     hpa.Annotations,
-				Status:          status,
+				Status:          whenTerminating(hpa.DeletionTimestamp, status),
 				UID:             string(hpa.UID),
 				CreatedAt:       hpa.CreationTimestamp.Format("2006-01-02 15:04:05"),
 				ScaleTargetKind: hpa.Spec.ScaleTargetRef.Kind,
@@ -790,7 +804,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   sa.Namespace,
 				Labels:      sa.Labels,
 				Annotations: sa.Annotations,
-				Status:      "Active",
+				Status:      whenTerminating(sa.DeletionTimestamp, "Active"),
 				UID:         string(sa.UID),
 				CreatedAt:   sa.CreationTimestamp.Format("2006-01-02 15:04:05"),
 			})
@@ -822,7 +836,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   job.Namespace,
 				Labels:      job.Labels,
 				Annotations: job.Annotations,
-				Status:      status,
+				Status:      whenTerminating(job.DeletionTimestamp, status),
 				UID:         string(job.UID),
 				CreatedAt:   job.CreationTimestamp.Format("2006-01-02 15:04:05"),
 			})
@@ -847,7 +861,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Namespace:   cj.Namespace,
 				Labels:      cj.Labels,
 				Annotations: cj.Annotations,
-				Status:      "Active",
+				Status:      whenTerminating(cj.DeletionTimestamp, "Active"),
 				UID:         string(cj.UID),
 				CreatedAt:   cj.CreationTimestamp.Format("2006-01-02 15:04:05"),
 			})

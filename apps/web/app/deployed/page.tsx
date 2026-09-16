@@ -176,8 +176,15 @@ export default function DeployedPage() {
 
     setBusy(r.uid);
     try {
-      await deleteResource(r.kind, r.name, r.namespace);
-      notify(`Deleted ${r.kind}/${r.name}`, "success");
+      const result = await deleteResource(r.kind, r.name, r.namespace);
+      // A delete the API server accepted is not the same as an object that has
+      // gone. Saying "Deleted" over something still on screen is the bug this
+      // avoids.
+      if (result?.terminating) {
+        notify(`${r.kind}/${r.name} is terminating. ${result.hint ?? ""}`.trim(), "info");
+      } else {
+        notify(`Deleted ${r.kind}/${r.name}`, "success");
+      }
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Failed to delete resource");
     } finally {
@@ -203,11 +210,22 @@ export default function DeployedPage() {
     const results = await Promise.allSettled(
       targets.map((r) => deleteResource(r.kind, r.name, r.namespace))
     );
-    const failed = results.filter((r) => r.status === "rejected").length;
+    const failed = results.filter(r => r.status === "rejected").length;
+    const terminating = results.filter(
+      r => r.status === "fulfilled" && r.value?.terminating
+    ).length;
     setBusy(null);
 
-    if (failed) notifyError(`Deleted ${targets.length - failed}, failed ${failed}.`);
-    else notify(`Deleted ${targets.length} resources.`, "success");
+    if (failed) {
+      notifyError(`Deleted ${targets.length - failed}, failed ${failed}.`);
+    } else if (terminating) {
+      notify(
+        `Deleted ${targets.length}. ${terminating} still terminating — something holds a finalizer on them.`,
+        "info"
+      );
+    } else {
+      notify(`Deleted ${targets.length} resources.`, "success");
+    }
   };
 
   if (error?.includes("Cannot connect")) {

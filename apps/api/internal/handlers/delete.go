@@ -74,5 +74,60 @@ func DeleteResource(ctx context.Context, client *k8s.Client, kind, name, namespa
 		opts.PropagationPolicy = &policy
 	}
 
-	return dr.Delete(ctx, name, opts)
+	if err := dr.Delete(ctx, name, opts); err != nil {
+		return err
+	}
+
+	// "Deleted" from the API server means "marked for deletion". If a finalizer
+	// is holding the object, it stays in the list looking untouched — which is
+	// how a LoadBalancer Service on a cluster with no load balancer behaves, and
+	// it reads as k8n having ignored the request. Say what really happened.
+	if held, holders := stillHeld(ctx, dr, name); held {
+		return &PendingDeletionError{Kind: kind, Name: name, Finalizers: holders}
+	}
+	return nil
+}
+
+// PendingDeletionError says the delete was accepted but something is holding
+// the object. It is not a failure — the caller reports it as the state it is.
+type PendingDeletionError struct {
+	Kind       string
+	Name       string
+	Finalizers []string
+}
+
+func (e *PendingDeletionError) Error() string {
+	return fmt.Sprintf("%s %q is terminating: %s has not released it",
+		e.Kind, e.Name, strings.Join(e.Finalizers, ", "))
+}
+
+// Hint is what to actually do about it, which is usually "nothing on this
+// cluster ever will".
+func (e *PendingDeletionError) Hint() string {
+	for _, f := range e.Finalizers {
+		if strings.Contains(f, "load-balancer-cleanup") {
+			return fmt.Sprintf(
+				"This is a LoadBalancer Service on a cluster with no load balancer, so nothing will ever clear it. "+
+					"Remove the finalizer by hand: kubectl patch svc %s -p '{\"metadata\":{\"finalizers\":[]}}' --type=merge",
+				e.Name)
+		}
+	}
+	return "It disappears when whatever owns that finalizer releases it. Until then the object stays in the list."
+}
+
+// stillHeld re-reads the object: gone means gone, present with a deletion
+// timestamp means a finalizer has it.
+func stillHeld(ctx context.Context, dr dynamic.ResourceInterface, name string) (bool, []string) {
+	obj, err := dr.Get(ctx, name, metav1.GetOptions{})
+	if err != nil || obj == nil {
+		return false, nil
+	}
+	if obj.GetDeletionTimestamp() == nil {
+		return false, nil
+	}
+	finalizers := obj.GetFinalizers()
+	if len(finalizers) == 0 {
+		finalizers = []string{"the cluster"}
+	}
+	return true, finalizers
 }
