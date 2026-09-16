@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/restmapper"
 )
@@ -106,13 +107,55 @@ func (e *PendingDeletionError) Error() string {
 func (e *PendingDeletionError) Hint() string {
 	for _, f := range e.Finalizers {
 		if strings.Contains(f, "load-balancer-cleanup") {
-			return fmt.Sprintf(
-				"This is a LoadBalancer Service on a cluster with no load balancer, so nothing will ever clear it. "+
-					"Remove the finalizer by hand: kubectl patch svc %s -p '{\"metadata\":{\"finalizers\":[]}}' --type=merge",
-				e.Name)
+			return "This is a LoadBalancer Service on a cluster with no load balancer, so nothing will ever " +
+				"clear it. Use Finish deleting on it."
 		}
 	}
-	return "It disappears when whatever owns that finalizer releases it. Until then the object stays in the list."
+	return "It disappears when whatever owns that finalizer releases it. If nothing ever will, use Finish deleting."
+}
+
+// ErrNotTerminating refuses to strip finalizers from something nobody deleted.
+var ErrNotTerminating = fmt.Errorf("this resource has not been deleted, so there is nothing to finish")
+
+// FinishDeletion removes the finalizers from an object that is already being
+// deleted, so the API server can let it go.
+//
+// That is the fix for a LoadBalancer Service on a cluster with no load balancer
+// — nothing will ever clear its finalizer — and it is also how you orphan a
+// real cloud load balancer and keep paying for it. So it only ever acts on an
+// object someone has already deleted, and the UI says what it costs before
+// anyone presses it.
+func FinishDeletion(ctx context.Context, client *k8s.Client, kind, name, namespace string) error {
+	if client == nil || client.DynamicClient == nil {
+		return fmt.Errorf("no cluster connection")
+	}
+	if IsProtected(name, namespace) {
+		return ErrProtected
+	}
+
+	mapping, err := resolveKind(client, kind)
+	if err != nil {
+		return err
+	}
+	var dr dynamic.ResourceInterface = client.DynamicClient.Resource(mapping.Resource)
+	if mapping.Scope.Name() != meta.RESTScopeNameRoot {
+		if namespace == "" {
+			namespace = "default"
+		}
+		dr = client.DynamicClient.Resource(mapping.Resource).Namespace(namespace)
+	}
+
+	obj, err := dr.Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	if obj.GetDeletionTimestamp() == nil {
+		return ErrNotTerminating
+	}
+
+	patch := []byte(`{"metadata":{"finalizers":null}}`)
+	_, err = dr.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+	return err
 }
 
 // stillHeld re-reads the object: gone means gone, present with a deletion

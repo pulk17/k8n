@@ -217,6 +217,7 @@ func main() {
 	r.GET("/api/cluster/crds", handlers.GetCRDs(getK8sClient))
 	r.GET("/api/schema/:kind", handlers.GetSchema(getK8sClient))
 	r.DELETE("/api/resource/delete", handlers.DeleteResourceHandler(getK8sClient))
+	r.POST("/api/resource/finalize", handlers.FinishDeletionHandler(getK8sClient))
 
 	// Metrics
 	r.GET("/api/metrics/check", handlers.CheckMetricsServer(getK8sClient))

@@ -479,6 +479,13 @@ export const applyYaml = (yaml: string, dryRun: boolean) =>
   });
 
 /** force drops the grace period, for objects stuck terminating. */
+/** Clears the finalizers on something already being deleted. */
+export const finishDeletion = (kind: string, name: string, namespace: string) =>
+  request<{ message: string }>("/api/resource/finalize", {
+    method: "POST",
+    body: { kind, name, namespace },
+  });
+
 export const deleteResource = (
   kind: string,
   name: string,

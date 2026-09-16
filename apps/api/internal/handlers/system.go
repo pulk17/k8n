@@ -77,6 +77,45 @@ func Connect(setClient func(*k8s.Client)) gin.HandlerFunc {
 
 // DeleteResourceHandler removes one resource. force=true drops the grace period
 // for objects stuck terminating; it does not get past the protection check.
+// FinishDeletionHandler clears the finalizers on a resource that is stuck
+// terminating. See FinishDeletion for why it refuses anything else.
+func FinishDeletionHandler(getClient ClientGetter) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		client := getClient()
+		if !requireDynamic(c, client) {
+			return
+		}
+
+		var req struct {
+			Kind      string `json:"kind" binding:"required"`
+			Name      string `json:"name" binding:"required"`
+			Namespace string `json:"namespace"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+		defer cancel()
+
+		err := FinishDeletion(ctx, client, req.Kind, req.Name, req.Namespace)
+		switch {
+		case errors.Is(err, ErrProtected):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case errors.Is(err, ErrNotTerminating):
+			c.JSON(http.StatusConflict, gin.H{
+				"error": err.Error(),
+				"hint":  "Delete it first. This only finishes a delete that is stuck.",
+			})
+		case err != nil:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not finish deleting", "details": err.Error()})
+		default:
+			c.JSON(http.StatusOK, gin.H{"message": "Finalizers removed; the resource is gone"})
+		}
+	}
+}
+
 func DeleteResourceHandler(getClient ClientGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client := getClient()

@@ -26,6 +26,7 @@ import {
 import {
   DiagnosisReport,
   deleteResource,
+  finishDeletion,
   errorMessage,
   fetchDiagnosis,
   K8sResource,
@@ -137,7 +138,10 @@ export default function DeployedPage() {
   const visible = resources
     .filter((r) => namespace === "all" || r.namespace === namespace)
     .filter((r) => !hideProtected || !r.protected);
-  const deletable = visible.filter((r) => !r.protected);
+  // Already-terminating resources are left out: deleting them again changes
+  // nothing, and "Deleted 1" over something still on screen is how this page
+  // looked broken.
+  const deletable = visible.filter(r => !r.protected && r.status !== "Terminating");
 
   const byKind = visible.reduce<Record<string, K8sResource[]>>((acc, r) => {
     (acc[r.kind] ||= []).push(r);
@@ -187,6 +191,36 @@ export default function DeployedPage() {
       }
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Failed to delete resource");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /**
+   * Lets a delete that is stuck behind a finalizer actually finish. The warning
+   * is the point: on a cluster with a real load balancer this is how you leave
+   * one running and billed with nothing in Kubernetes pointing at it.
+   */
+  const finish = async (r: K8sResource) => {
+    const ok = await confirmAction({
+      title: "Finish deleting?",
+      message:
+        `${r.kind} "${r.name}" was deleted, but a finalizer is holding it.\n\n` +
+        "Removing the finalizer lets it go now, without whatever was supposed to clean up " +
+        "after it. That is right for a LoadBalancer on a cluster with no load balancer — " +
+        "nothing will ever clear it. On a cloud cluster it can leave the real load balancer " +
+        "running, and billed.",
+      confirmLabel: "Finish deleting",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setBusy(r.uid);
+    try {
+      await finishDeletion(r.kind, r.name, r.namespace);
+      notify(`${r.kind}/${r.name} is gone`, "success");
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Could not finish deleting");
     } finally {
       setBusy(null);
     }
@@ -506,6 +540,17 @@ export default function DeployedPage() {
                               >
                                 System
                               </span>
+                            ) : r.status === "Terminating" ? (
+                              // Deleting it again does nothing — it is already
+                              // deleted. What it needs is letting go.
+                              <button
+                                onClick={() => finish(r)}
+                                disabled={busy === r.uid}
+                                className="rounded border border-amber-800/60 px-2.5 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-950/40 disabled:opacity-50"
+                                title="It was deleted, but a finalizer is holding it"
+                              >
+                                Finish deleting
+                              </button>
                             ) : (
                               <button
                                 onClick={() => remove(r)}
