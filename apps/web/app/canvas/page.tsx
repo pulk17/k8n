@@ -357,7 +357,11 @@ function CanvasPageContent() {
     try {
       const source = await saveGraph();
       notify(
-        source === "database" ? "Saved to the database" : "Saved in this browser (no database)",
+        source === "database"
+          ? "Saved to the database"
+          : source === "file"
+            ? "Saved on this machine (~/.k8n/workflows)"
+            : "Saved in this browser",
         "success"
       );
     } catch (err) {

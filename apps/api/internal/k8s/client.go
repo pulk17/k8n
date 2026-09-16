@@ -2,14 +2,12 @@ package k8s
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 )
 
 // Client holds the various K8s clients we need
@@ -21,21 +19,20 @@ type Client struct {
 	Context         string
 }
 
-func getKubeconfigFile() (string, error) {
-	if home := homedir.HomeDir(); home != "" {
-		return filepath.Join(home, ".kube", "config"), nil
-	}
-	return "", fmt.Errorf("could not find home directory")
+// loadingRules is how kubectl itself finds a kubeconfig: $KUBECONFIG when it is
+// set — including several paths joined by the platform's list separator, merged
+// in order — and ~/.kube/config otherwise.
+//
+// This used to be hard-coded to ~/.kube/config, so anyone who keeps their
+// clusters elsewhere (which is normal with more than one) opened k8n to no
+// contexts at all and no explanation.
+func loadingRules() *clientcmd.ClientConfigLoadingRules {
+	return clientcmd.NewDefaultClientConfigLoadingRules()
 }
 
-// GetContexts returns a list of available contexts from ~/.kube/config
+// GetContexts returns the contexts from the kubeconfig in force.
 func GetContexts() ([]string, error) {
-	kubeconfig, err := getKubeconfigFile()
-	if err != nil {
-		return nil, err
-	}
-
-	config, err := clientcmd.LoadFromFile(kubeconfig)
+	config, err := loadingRules().Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load kubeconfig: %w", err)
 	}
@@ -59,19 +56,13 @@ func NewClient(contextName string) (*Client, error) {
 	}
 
 	if config == nil || err != nil {
-		// Fallback to local kubeconfig
-		kubeconfig, err := getKubeconfigFile()
-		if err != nil {
-			return nil, err
-		}
-
-		loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
+		// Fallback to the local kubeconfig, found the way kubectl finds it.
 		configOverrides := &clientcmd.ConfigOverrides{}
 		if contextName != "" {
 			configOverrides.CurrentContext = contextName
 		}
 
-		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+		clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules(), configOverrides)
 		config, err = clientConfig.ClientConfig()
 		if err != nil {
 			return nil, fmt.Errorf("failed to load kubeconfig client config: %w", err)

@@ -8,7 +8,12 @@ import { ApiError, request } from "./api";
 
 const LOCAL_KEY = "k8n_workflows";
 
-export type WorkflowSource = "database" | "browser";
+/**
+ * Where a workflow lives. "file" is the single binary's own store in
+ * ~/.k8n/workflows, used when no database is configured — it loads through the
+ * same API as "database", so only the wording differs.
+ */
+export type WorkflowSource = "database" | "file" | "browser";
 
 export interface WorkflowSummary {
   id: string;
@@ -76,7 +81,7 @@ export async function saveWorkflow(
   id?: string | null
 ): Promise<{ id: string; source: WorkflowSource }> {
   try {
-    const saved = await request<{ id: string }>("/api/graph/save", {
+    const saved = await request<{ id: string; storage?: string }>("/api/graph/save", {
       method: "POST",
       body: {
         id,
@@ -85,7 +90,7 @@ export async function saveWorkflow(
         graph_json: { nodes: graph.nodes, edges: graph.edges },
       },
     });
-    return { id: saved.id, source: "database" };
+    return { id: saved.id, source: saved.storage === "file" ? "file" : "database" };
   } catch (err) {
     // 503 means "no database"; anything else is a real failure worth surfacing.
     if (!(err instanceof ApiError) || err.status !== 503) throw err;

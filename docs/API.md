@@ -282,8 +282,11 @@ failing the whole batch:
 
 ## Saved workflows
 
-These need Postgres (`DATABASE_URL`). Without it they return `503` and the
-frontend falls back to browser storage.
+With `DATABASE_URL` these use Postgres. Without it they use the file store —
+one JSON document per workflow in `~/.k8n/workflows`, owner-readable — so the
+single binary saves and loads workflows on its own. `POST /api/graph/save`
+answers with `"storage": "file"` in that case, which is how the UI knows what
+to call the place it just saved to.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

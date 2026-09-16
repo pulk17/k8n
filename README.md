@@ -83,6 +83,10 @@ target port matching no container port, an autoscaler with no CPU requests, a
 name Kubernetes will reject — each with the reason it matters and the fix, not
 just a red mark.
 
+**It keeps your work without a database.** Saved workflows are JSON files in
+`~/.k8n/workflows` — readable, copyable between machines, fine in git. Point
+`DATABASE_URL` at Postgres instead when several people share one k8n.
+
 **It imports what is already running.** Point it at a cluster and the live
 resources arrive as a graph, wired by their real references, with statuses that
 update from a watch stream.
@@ -131,7 +135,7 @@ Everything is optional. Copy [.env.example](.env.example) if you want a file.
 | `API_HOST` | Interfaces to bind; loopback by default |
 | `K8N_TOKEN` | Fixed pairing token; otherwise generated and saved to `~/.k8n/token` |
 | `K8N_NO_AUTH` | `true` turns pairing off — trusted networks only |
-| `DATABASE_URL` | Postgres for saved workflows; without it they save in the browser |
+| `DATABASE_URL` | Postgres for saved workflows; without it they are files in `~/.k8n/workflows` |
 | `K8N_AI_PROVIDER` / `K8N_AI_MODEL` / `K8N_AI_API_KEY` | The assistant's model, when you would rather not use the panel |
 | `K8N_AI_BASE_URL` | An OpenAI-compatible endpoint of your own |
 | `GEMINI_API_KEY` | The original name; still means Gemini |

@@ -118,7 +118,11 @@ export default function WorkflowManager({ isOpen, onClose, onLoadWorkflow }: Wor
         graphId
       );
       notify(
-        source === "database" ? "Saved to the database" : "Saved in this browser (no database)",
+        source === "database"
+          ? "Saved to the database"
+          : source === "file"
+            ? "Saved on this machine (~/.k8n/workflows)"
+            : "Saved in this browser",
         "success"
       );
       refresh();
@@ -369,7 +373,7 @@ export default function WorkflowManager({ isOpen, onClose, onLoadWorkflow }: Wor
                     </h4>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       {workflow.namespace} • {new Date(workflow.updatedAt).toLocaleString()} •{" "}
-                      {workflow.source === "database" ? "database" : "this browser"}
+                      {workflow.source === "browser" ? "this browser" : "this machine"}
                     </p>
                   </div>
                   <button

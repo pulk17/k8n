@@ -51,14 +51,6 @@ type SaveGraphRequest struct {
 
 func SaveGraph() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if db == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "Workflow storage is unavailable",
-				"hint":  "Start Postgres (docker-compose up -d) to save and load workflows. Everything else in k8n works without it.",
-			})
-			return
-		}
-
 		var req SaveGraphRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -68,6 +60,17 @@ func SaveGraph() gin.HandlerFunc {
 		graphID := req.ID
 		if graphID == "" {
 			graphID = uuid.New().String()
+		}
+
+		// No database: the file store in ~/.k8n/workflows. Saving your own canvas
+		// should not need a server running beside k8n.
+		if db == nil {
+			if err := saveGraphFile(req, graphID); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not save the workflow", "details": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"id": graphID, "status": "saved", "storage": "file"})
+			return
 		}
 
 		graphJsonBytes, err := json.Marshal(req.GraphJSON)
@@ -98,15 +101,22 @@ func SaveGraph() gin.HandlerFunc {
 
 func LoadGraph() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		id := c.Param("id")
+
 		if db == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "Workflow storage is unavailable",
-				"hint":  "Start Postgres (docker-compose up -d) to save and load workflows. Everything else in k8n works without it.",
+			saved, err := loadGraphFile(id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Graph not found"})
+				return
+			}
+			c.JSON(http.StatusOK, SaveGraphRequest{
+				ID:        saved.ID,
+				Name:      saved.Name,
+				Namespace: saved.Namespace,
+				GraphJSON: saved.GraphJSON,
 			})
 			return
 		}
-
-		id := c.Param("id")
 
 		var req SaveGraphRequest
 		var graphJsonStr string
@@ -131,11 +141,16 @@ func LoadGraph() gin.HandlerFunc {
 
 func ListGraphs() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// k8n runs fine without Postgres — you just cannot persist workflows. An
-		// empty list is the honest answer here; erroring would break the whole
-		// workflow manager for anyone who has not started a database.
+		// Without Postgres the workflows are files on disk.
 		if db == nil {
-			c.JSON(http.StatusOK, []map[string]interface{}{})
+			list, err := listGraphFiles()
+			if err != nil {
+				// An unreadable directory is not worth breaking the workflow
+				// manager over; an empty list is the honest answer.
+				c.JSON(http.StatusOK, []map[string]interface{}{})
+				return
+			}
+			c.JSON(http.StatusOK, list)
 			return
 		}
 
@@ -172,17 +187,18 @@ func ListGraphs() gin.HandlerFunc {
 
 func DeleteGraph() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if db == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"error": "Workflow storage is unavailable",
-				"hint":  "Start Postgres (docker-compose up -d) to save and load workflows. Everything else in k8n works without it.",
-			})
-			return
-		}
-
 		graphID := c.Param("id")
 		if graphID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Graph ID is required"})
+			return
+		}
+
+		if db == nil {
+			if err := deleteGraphFile(graphID); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete graph", "details": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"message": "Graph deleted successfully"})
 			return
 		}
 
