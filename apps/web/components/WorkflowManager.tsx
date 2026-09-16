@@ -4,16 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 import { Node } from "reactflow";
 import {
   Boxes,
+  ChevronRight,
   Download,
   FileCode,
   FileJson,
   FileText,
   FileType,
+  FolderOpen,
   Globe,
-  LayoutTemplate,
+  GraduationCap,
   LineChart,
   LucideIcon,
   Plus,
+  Save,
   Timer,
   Trash2,
   Upload,
@@ -23,13 +26,7 @@ import { useCanvasStore } from "../store/canvasStore";
 import { compileGraph, errorMessage, importManifest } from "../lib/api";
 import { makeEdge, makeNode, nodeId } from "../lib/graph";
 import { dockerfileToGraph } from "../lib/dockerfile";
-import {
-  TemplateIcon,
-  templates,
-  templateToGraph,
-  getAllCategories,
-  getTemplatesByCategory,
-} from "../lib/templates";
+import { TemplateIcon, templates, templateToGraph } from "../lib/templates";
 import {
   WorkflowSummary,
   deleteWorkflow,
@@ -43,6 +40,8 @@ interface WorkflowManagerProps {
   isOpen: boolean;
   onClose: () => void;
   onLoadWorkflow: (type: "new" | "example" | "cluster" | "saved", id?: string) => void;
+  /** Loads the demo app and starts the walkthrough. */
+  onStartTour?: () => void;
 }
 
 type ImportKind = "yaml" | "json" | "dockerfile";
@@ -75,14 +74,17 @@ function download(filename: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function WorkflowManager({ isOpen, onClose, onLoadWorkflow }: WorkflowManagerProps) {
+export default function WorkflowManager({
+  isOpen,
+  onClose,
+  onLoadWorkflow,
+  onStartTour,
+}: WorkflowManagerProps) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [importKind, setImportKind] = useState<ImportKind | null>(null);
   const [importContent, setImportContent] = useState("");
   const [importing, setImporting] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [category, setCategory] = useState("all");
 
   const { nodes, edges, graphName, graphId, activeNamespace, setGraph } = useCanvasStore();
   const hasWork = nodes.length > 0;
@@ -186,7 +188,6 @@ export default function WorkflowManager({ isOpen, onClose, onLoadWorkflow }: Wor
 
       const { nodes: built, edges: builtEdges } = templateToGraph(template);
       setGraph(built, builtEdges, template.name);
-      setShowTemplates(false);
       onClose();
     });
 
@@ -244,155 +245,224 @@ export default function WorkflowManager({ isOpen, onClose, onLoadWorkflow }: Wor
 
   if (!isOpen) return null;
 
-  const actions = [
-    {
-      key: "templates",
-      icon: LayoutTemplate,
-      title: "Templates",
-      description: `${templates.length} ready-to-use workflows`,
-      onClick: () => setShowTemplates(true),
-    },
+  // Three things people come here to do, in the order they most often want
+  // them: carry on with something saved, start something, or bring something in.
+  // They used to be seven identical cards in one grid, with saved work below
+  // the fold and templates behind a second dialog.
+  const starters: Action[] = [
     {
       key: "new",
       icon: Plus,
-      title: "New Workflow",
-      description: "Start with an empty canvas",
+      title: "Empty canvas",
+      description: "Start from nothing and drag resources in",
       onClick: () => replaceCanvas(() => onLoadWorkflow("new")),
     },
-    {
-      key: "example",
-      icon: FileText,
-      title: "Example Workflow",
-      description: "Nginx deployment with a service",
-      onClick: () => replaceCanvas(() => onLoadWorkflow("example")),
-    },
+    ...(onStartTour
+      ? [
+          {
+            key: "tour",
+            icon: GraduationCap,
+            title: "Show me around",
+            description: "A real app, explained one object at a time",
+            onClick: () =>
+              replaceCanvas(() => {
+                onClose();
+                onStartTour();
+              }),
+          },
+        ]
+      : []),
+  ];
+
+  const imports: Action[] = [
     {
       key: "cluster",
       icon: Download,
-      title: "Import from Cluster",
-      description: "Load what is running right now",
+      title: "From your cluster",
+      description: "What is running right now",
       onClick: () => replaceCanvas(() => onLoadWorkflow("cluster")),
     },
     {
       key: "yaml",
       icon: FileCode,
-      title: "Import YAML",
-      description: "Turn manifests into a graph",
+      title: "Kubernetes YAML",
+      description: "Manifests become a wired graph",
       onClick: () => setImportKind("yaml"),
     },
     {
       key: "json",
       icon: Upload,
-      title: "Import JSON",
-      description: "Reopen an exported workflow",
+      title: "k8n JSON",
+      description: "A workflow exported from here",
       onClick: () => setImportKind("json"),
     },
     {
       key: "dockerfile",
       icon: FileType,
-      title: "Import Dockerfile",
-      description: "Sketch a workflow from a Dockerfile",
+      title: "Dockerfile",
+      description: "A rough first sketch",
       onClick: () => setImportKind("dockerfile"),
     },
   ];
 
-  const shown = category === "all" ? templates : getTemplatesByCategory(category);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-neutral-800">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Workflows</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-label="Workflows"
+        className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-neutral-800 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-100">Workflows</h2>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Carry on with saved work, start something new, or bring in what you already have.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded p-1 text-gray-500 transition-colors hover:bg-neutral-800 hover:text-gray-200"
+          >
             <X className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
-        <div className="flex-1 overflow-y-auto p-6">
-          {hasWork && (
-            <div className="mb-6 flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/20">
-              <span className="mr-auto text-sm text-blue-900 dark:text-blue-100">
-                {nodes.length} resources on the canvas
+        {/* What is on the canvas right now, and the three things you can do with
+            it. Only there when there is something to act on. */}
+        {hasWork && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-950/60 px-6 py-3">
+            <div className="mr-auto min-w-0">
+              <p className="truncate text-sm font-medium text-gray-200">{graphName}</p>
+              <p className="text-[11px] text-gray-500">
+                On the canvas now · {nodes.length} resource{nodes.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            <button
+              onClick={saveCurrent}
+              className="flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save
+            </button>
+            <div className="flex items-stretch overflow-hidden rounded border border-neutral-700">
+              <span className="flex items-center border-r border-neutral-700 px-2.5 text-[11px] text-gray-500">
+                Export
               </span>
               <button
-                onClick={saveCurrent}
-                className="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                onClick={exportYaml}
+                title="The compiled Kubernetes manifests"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:bg-neutral-800"
               >
-                Save
+                <FileCode className="h-3.5 w-3.5" />
+                YAML
               </button>
               <button
                 onClick={exportJson}
-                className="flex items-center gap-2 rounded bg-neutral-700 px-3 py-2 text-sm text-white hover:bg-neutral-600"
+                title="The canvas itself, to reopen in k8n"
+                className="flex items-center gap-1.5 border-l border-neutral-700 px-2.5 py-1.5 text-xs text-gray-300 transition-colors hover:bg-neutral-800"
               >
-                <FileJson className="h-4 w-4" />
-                Export JSON
-              </button>
-              <button
-                onClick={exportYaml}
-                className="flex items-center gap-2 rounded bg-purple-600 px-3 py-2 text-sm text-white hover:bg-purple-700"
-              >
-                <FileCode className="h-4 w-4" />
-                Export YAML
+                <FileJson className="h-3.5 w-3.5" />
+                JSON
               </button>
             </div>
-          )}
+          </div>
+        )}
 
-          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {actions.map(({ key, icon: Icon, title, description, onClick }) => (
-              <button
-                key={key}
-                onClick={onClick}
-                className="group rounded-lg border border-gray-300 p-4 text-left transition-colors hover:border-blue-500 hover:bg-blue-50 dark:border-neutral-700 dark:hover:bg-blue-950/20"
-              >
-                <Icon className="mb-3 h-7 w-7 text-gray-400 group-hover:text-blue-500" />
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
-              </button>
-            ))}
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1fr)_20rem] lg:overflow-hidden">
+          <div className="space-y-7 p-6 lg:overflow-y-auto">
+            <Section title="Start something new">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {starters.map(({ key, ...action }) => (
+                  <BigAction key={key} {...action} />
+                ))}
+              </div>
+
+              <p className="mb-2 mt-5 text-[11px] font-medium text-gray-500">From a template</p>
+              <div className="divide-y divide-neutral-800 overflow-hidden rounded-md border border-neutral-800">
+                <Row
+                  icon={FileText}
+                  title="Nginx starter"
+                  description="A Deployment, its Service, a ConfigMap and an Ingress"
+                  meta="4 resources"
+                  onClick={() => replaceCanvas(() => onLoadWorkflow("example"))}
+                />
+                {templates.map(template => (
+                  <Row
+                    key={template.id}
+                    icon={TEMPLATE_ICONS[template.icon]}
+                    title={template.name}
+                    description={template.description}
+                    meta={`${template.nodes.length} resources`}
+                    onClick={() => loadTemplate(template.id)}
+                  />
+                ))}
+              </div>
+            </Section>
+
+            <Section title="Bring in what you have">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {imports.map(({ key, ...action }) => (
+                  <SmallAction key={key} {...action} />
+                ))}
+              </div>
+            </Section>
           </div>
 
-          <h3 className="mb-3 text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Saved workflows
-          </h3>
-          {loading ? (
-            <p className="text-sm text-gray-500">Loading…</p>
-          ) : workflows.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              Nothing saved yet. Ctrl+S on the canvas saves the current workflow.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {workflows.map(workflow => (
-                <div
-                  key={`${workflow.source}-${workflow.id}`}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-neutral-700 dark:bg-neutral-800"
-                >
-                  <div className="min-w-0 flex-1">
-                    <h4 className="truncate font-semibold text-gray-900 dark:text-gray-100">
-                      {workflow.name}
-                    </h4>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      {workflow.namespace} • {new Date(workflow.updatedAt).toLocaleString()} •{" "}
-                      {workflow.source === "browser" ? "this browser" : "this machine"}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => open(workflow)}
-                    className="rounded bg-blue-600 px-3 py-1 text-sm text-white hover:bg-blue-700"
-                  >
-                    Open
-                  </button>
-                  <button
-                    onClick={() => remove(workflow)}
-                    className="rounded p-2 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/20"
-                    title="Delete workflow"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+          <aside className="border-t border-neutral-800 bg-neutral-950/40 p-6 lg:overflow-y-auto lg:border-l lg:border-t-0">
+            <Section title="Your workflows" count={loading ? undefined : workflows.length}>
+              {loading ? (
+                <p className="text-xs text-gray-500">Loading…</p>
+              ) : workflows.length === 0 ? (
+                <div className="rounded-md border border-dashed border-neutral-800 p-4 text-center">
+                  <FolderOpen className="mx-auto mb-2 h-6 w-6 text-gray-600" />
+                  <p className="text-xs text-gray-400">Nothing saved yet.</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-600">
+                    Ctrl+S on the canvas saves what you are working on, to{" "}
+                    <code className="font-mono">~/.k8n/workflows</code>.
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
+              ) : (
+                <ul className="space-y-2">
+                  {workflows.map(workflow => (
+                    <li
+                      key={`${workflow.source}-${workflow.id}`}
+                      className="group flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900 p-2.5 transition-colors hover:border-neutral-700"
+                    >
+                      <button
+                        onClick={() => open(workflow)}
+                        className="min-w-0 flex-1 text-left"
+                        title="Open this workflow"
+                      >
+                        <span className="block truncate text-sm font-medium text-gray-200 group-hover:text-blue-300">
+                          {workflow.name}
+                        </span>
+                        {/* Two short lines rather than one long one: in a
+                            20rem column the date pushed "where" off the end. */}
+                        <span className="mt-0.5 block truncate text-[11px] text-gray-500">
+                          {workflow.namespace} ·{" "}
+                          {workflow.source === "browser" ? "this browser" : "this machine"}
+                        </span>
+                        <span className="block text-[10px] text-gray-600">
+                          {new Date(workflow.updatedAt).toLocaleString(undefined, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => remove(workflow)}
+                        aria-label={`Delete ${workflow.name}`}
+                        className="flex-shrink-0 rounded p-1.5 text-gray-600 opacity-0 transition hover:bg-red-950/40 hover:text-red-400 focus:opacity-100 group-hover:opacity-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+          </aside>
         </div>
       </div>
 
@@ -449,67 +519,98 @@ export default function WorkflowManager({ isOpen, onClose, onLoadWorkflow }: Wor
         </div>
       )}
 
-      {showTemplates && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-neutral-800">
-              <h2 className="flex items-center gap-2 text-xl font-bold text-gray-900 dark:text-gray-100">
-                <LayoutTemplate className="h-6 w-6 text-blue-500" />
-                Templates
-              </h2>
-              <button
-                onClick={() => setShowTemplates(false)}
-                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 overflow-x-auto border-b border-gray-200 px-6 py-3 dark:border-neutral-800">
-              {["all", ...getAllCategories()].map(name => (
-                <button
-                  key={name}
-                  onClick={() => setCategory(name)}
-                  className={`whitespace-nowrap rounded px-3 py-1 text-sm font-medium ${
-                    category === name
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-neutral-800 dark:text-gray-300"
-                  }`}
-                >
-                  {name === "all" ? "All" : name}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-6 md:grid-cols-2 lg:grid-cols-3">
-              {shown.map(template => (
-                <button
-                  key={template.id}
-                  onClick={() => loadTemplate(template.id)}
-                  className="group rounded-lg border-2 border-gray-200 p-4 text-left transition-all hover:border-blue-500 hover:bg-blue-50 dark:border-neutral-800 dark:hover:bg-blue-950/20"
-                >
-                  {(() => {
-                    const Icon = TEMPLATE_ICONS[template.icon];
-                    return <Icon className="mb-3 h-7 w-7 text-gray-400 group-hover:text-blue-500" />;
-                  })()}
-                  <h3 className="mb-1 font-semibold text-gray-900 group-hover:text-blue-600 dark:text-gray-100">
-                    {template.name}
-                  </h3>
-                  <p className="mb-2 text-xs text-gray-600 dark:text-gray-400">
-                    {template.description}
-                  </p>
-                  <div className="flex items-center gap-2 text-xs text-gray-500">
-                    <span className="rounded bg-gray-100 px-2 py-0.5 dark:bg-neutral-800">
-                      {template.category}
-                    </span>
-                    <span>{template.nodes.length} resources</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
+  );
+}
+
+interface Action {
+  key: string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  onClick: () => void;
+}
+
+function Section({
+  title,
+  count,
+  children,
+}: {
+  title: string;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <h3 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+        {title}
+        {count !== undefined && count > 0 && (
+          <span className="rounded bg-neutral-800 px-1.5 py-0.5 text-[10px] text-gray-400">{count}</span>
+        )}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/** The two ways to start: big, because they are the whole reason for a first visit. */
+function BigAction({ icon: Icon, title, description, onClick }: Omit<Action, "key">) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex items-start gap-3 rounded-md border border-neutral-800 bg-neutral-950 p-4 text-left transition-colors hover:border-blue-700 hover:bg-blue-950/20"
+    >
+      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-neutral-800 text-gray-300 group-hover:bg-blue-900/60 group-hover:text-blue-200">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span>
+        <span className="block text-sm font-medium text-gray-100">{title}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-gray-500">{description}</span>
+      </span>
+    </button>
+  );
+}
+
+function SmallAction({ icon: Icon, title, description, onClick }: Omit<Action, "key">) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex items-center gap-3 rounded-md border border-neutral-800 px-3 py-2.5 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-800/50"
+    >
+      <Icon className="h-4 w-4 flex-shrink-0 text-gray-500 group-hover:text-gray-300" />
+      <span className="min-w-0">
+        <span className="block truncate text-xs font-medium text-gray-200">{title}</span>
+        <span className="block truncate text-[11px] text-gray-500">{description}</span>
+      </span>
+    </button>
+  );
+}
+
+function Row({
+  icon: Icon,
+  title,
+  description,
+  meta,
+  onClick,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  meta: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex w-full items-center gap-3 bg-neutral-950 px-3 py-2.5 text-left transition-colors hover:bg-neutral-800/60"
+    >
+      <Icon className="h-4 w-4 flex-shrink-0 text-gray-500 group-hover:text-blue-400" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium text-gray-200">{title}</span>
+        <span className="block truncate text-[11px] text-gray-500">{description}</span>
+      </span>
+      <span className="flex-shrink-0 text-[10px] text-gray-600">{meta}</span>
+      <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-gray-600 group-hover:text-gray-300" />
+    </button>
   );
 }

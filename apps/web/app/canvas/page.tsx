@@ -741,6 +741,7 @@ function CanvasPageContent() {
         isOpen={showWorkflowManager}
         onClose={() => setShowWorkflowManager(false)}
         onLoadWorkflow={handleLoadWorkflow}
+        onStartTour={startTour}
       />
 
       {!loading && nodes.length === 0 && !showWorkflowManager && (

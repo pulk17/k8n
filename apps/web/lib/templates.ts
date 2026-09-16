@@ -539,11 +539,3 @@ export function templateToGraph(template: Template): { nodes: Node[]; edges: Edg
   // drawn to read in the order the explanation goes through them.
   return { nodes, edges };
 }
-
-export function getTemplatesByCategory(category: string): Template[] {
-  return templates.filter(t => t.category === category);
-}
-
-export function getAllCategories(): string[] {
-  return Array.from(new Set(templates.map(t => t.category)));
-}
