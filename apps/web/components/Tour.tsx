@@ -8,6 +8,7 @@ import { Depth, useLearningStore } from "../store/learningStore";
 import { NodeData } from "../lib/graph";
 import { conceptFor, kubectlFor } from "../lib/concepts";
 import { inputsFor, outputsFor } from "../lib/connections";
+import ConceptDiagram, { hasDiagram } from "./ConceptDiagram";
 
 /**
  * A walk through a real application, one object at a time.
@@ -24,6 +25,8 @@ interface Step {
   title: string;
   lead: string;
   points: string[];
+  /** The kind to draw, when there is a picture worth showing for it. */
+  kind?: string;
 }
 
 function stepFor(node: Node<NodeData>, depth: Depth): Step {
@@ -31,7 +34,7 @@ function stepFor(node: Node<NodeData>, depth: Depth): Step {
   const concept = conceptFor(kind);
 
   if (!concept) {
-    return { nodeId: node.id, title: `${name} · ${kind}`, lead: `A ${kind}.`, points: [] };
+    return { nodeId: node.id, title: `${name} · ${kind}`, lead: `A ${kind}.`, points: [], kind };
   }
 
   if (depth === "expert") {
@@ -44,6 +47,7 @@ function stepFor(node: Node<NodeData>, depth: Depth): Step {
       title: `${name} · ${kind}`,
       lead: `Compiles to a ${kind}. Fields on the card map straight onto its spec.`,
       points: [...wires.slice(0, 3), ...concept.kubectl.map(c => kubectlFor(c, name, namespace))],
+      kind,
     };
   }
 
@@ -53,6 +57,7 @@ function stepFor(node: Node<NodeData>, depth: Depth): Step {
       title: `${name} · ${kind}`,
       lead: concept.keyIdea,
       points: concept.gotchas,
+      kind,
     };
   }
 
@@ -61,6 +66,7 @@ function stepFor(node: Node<NodeData>, depth: Depth): Step {
     title: `${name} · ${kind}`,
     lead: concept.analogy,
     points: [concept.whatItDoes, concept.keyIdea, ...concept.gotchas.slice(0, 1)],
+    kind,
   };
 }
 
@@ -153,7 +159,10 @@ export default function Tour({
         </button>
       </div>
 
-      <div className="max-h-[38vh] space-y-2 overflow-y-auto px-4 py-3">
+      <div className="max-h-[52vh] space-y-2.5 overflow-y-auto px-4 py-3">
+        {depth !== "expert" && step.kind && hasDiagram(step.kind) && (
+          <ConceptDiagram kind={step.kind} />
+        )}
         <p className="text-sm leading-relaxed text-gray-200">{step.lead}</p>
         <ul className="space-y-1.5">
           {step.points.map(point => (

@@ -6,6 +6,7 @@ import { conceptFor, kubectlFor } from "../lib/concepts";
 import { inputsFor, outputsFor } from "../lib/connections";
 import { RESOURCE_COLORS, DEFAULT_RESOURCE_COLOR } from "../lib/constants";
 import { showsAt, useLearningStore } from "../store/learningStore";
+import ConceptDiagram from "./ConceptDiagram";
 
 /**
  * What this kind of object *is*, for someone who has not memorised Kubernetes.
@@ -44,6 +45,11 @@ export default function InspectorLearn({
 
   return (
     <div className="space-y-5 p-4">
+      {/* An expert does not need to watch a rolling update to know what one
+          is; everyone else learns more from ten seconds of this than from the
+          paragraph under it. */}
+      {depth !== "expert" && <ConceptDiagram kind={kind} />}
+
       {showsAt(depth, "intro") && (
         <>
           <section>

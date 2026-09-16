@@ -83,7 +83,13 @@ would otherwise be typing. How much of that you see follows the level you picked
 — new, familiar, or expert — and you can change it any time from **View →
 Explanations**.
 
-![The guided walkthrough](docs/images/tour.png)
+![The guided walkthrough, with a diagram of the object it is describing](docs/images/tour-diagram.png)
+
+The ideas that are hardest to hold from prose — replacement, selection,
+mounting, persistence, scaling, blocking — come with a small animated diagram
+of the mechanism, in the Learn tab and in the walkthrough.
+
+![A Deployment replacing pods one at a time](docs/images/diagram-deployment.png)
 
 **It checks the graph before the cluster does.** A Service selecting nothing, a
 target port matching no container port, an autoscaler with no CPU requests, a

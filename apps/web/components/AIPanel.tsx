@@ -30,6 +30,10 @@ interface Message {
  */
 export default function AIPanel() {
   const [status, setStatus] = useState<AIStatus>({ enabled: false, model: "" });
+  // Whether the answer has come back yet. Without this the setup form mounts
+  // against an empty status, captures blank defaults, and looks as though the
+  // key it is holding was never saved.
+  const [statusLoaded, setStatusLoaded] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const enabled = status.enabled;
   const [open, setOpen] = useState(false);
@@ -44,7 +48,9 @@ export default function AIPanel() {
   const depth = useLearningStore(s => s.depth);
 
   useEffect(() => {
-    fetchAIStatus().then(setStatus);
+    fetchAIStatus()
+      .then(setStatus)
+      .finally(() => setStatusLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -235,13 +241,25 @@ export default function AIPanel() {
           </button>
         </div>
 
-        <AISetup
-          status={status}
-          onChanged={next => {
-            setStatus(next);
-            if (next.enabled) setShowSetup(false);
-          }}
-        />
+        {statusLoaded ? (
+          <AISetup
+            // Keyed on what the form starts from, so the saved provider, model
+            // and key hint are what it opens with — the fields are filled in
+            // before anyone sees them, rather than being reset by an answer
+            // that arrives late.
+            key={`${status.provider}|${status.model}|${status.baseUrl}|${status.keyHint}`}
+            status={status}
+            onChanged={next => {
+              setStatus(next);
+              if (next.enabled) setShowSetup(false);
+            }}
+          />
+        ) : (
+          <p className="flex items-center gap-2 p-4 text-xs text-gray-500">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Reading the saved settings…
+          </p>
+        )}
       </div>
     );
   }

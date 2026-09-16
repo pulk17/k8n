@@ -30,7 +30,12 @@ export default function AISetup({
   onChanged: (next: AIStatus) => void;
 }) {
   const providers = status.providers ?? [];
-  const [provider, setProvider] = useState(status.provider || providers[0]?.id || "google");
+  // A provider the list does not contain leaves the select blank, which is what
+  // an unanswered status request used to produce.
+  const known = providers.some(p => p.id === status.provider);
+  const [provider, setProvider] = useState(
+    known ? (status.provider as string) : providers[0]?.id ?? "google"
+  );
   const [model, setModel] = useState(status.model || "");
   const [baseUrl, setBaseUrl] = useState(status.baseUrl || "");
   const [apiKey, setApiKey] = useState("");
