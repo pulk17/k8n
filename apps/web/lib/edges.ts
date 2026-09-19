@@ -1,6 +1,7 @@
 import { Edge } from "reactflow";
 import { K8sResource } from "./api";
 import { getConnectionType, isAnimatedType, ConnectionType } from "./connections";
+import { sourceHandleId, targetHandleId } from "./graph";
 
 // Re-exported so existing imports keep working; the definitions now live in
 // connections.ts, which is the single source of truth for the graph's rules.
@@ -39,6 +40,10 @@ function makeEdge(
     id: `edge-${source.uid}-${target.uid}-${type}`,
     source: source.uid,
     target: target.uid,
+    // Without these React Flow puts every wire on the card's first socket, so
+    // config, identity and scaling all appeared to plug into "traffic".
+    // Ownership (Deployment -> ReplicaSet) is not drawable and has no socket.
+    ...(type !== "ownership" && { sourceHandle: sourceHandleId(type), targetHandle: targetHandleId(type) }),
     type: "default",
     animated: isAnimatedType(type as ConnectionType),
     style,
