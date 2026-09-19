@@ -136,12 +136,34 @@ func locate(install *action.Install, o Options) (*chart.Chart, error) {
 // rest of the graph: previously a chart was installed straight from the canvas
 // with no dry run and no way to see what it would create.
 func Template(client *k8s.Client, o Options) (string, error) {
+	online := client != nil && client.Config != nil
+	manifest, err := render(client, o, online)
+	// Asking the cluster which APIs it has is a nicety, not a need: a stopped
+	// Docker Desktop should not stop anyone reading a chart. Render offline, as
+	// `helm template` does, against Helm's default capabilities.
+	if err != nil && online && IsUnreachable(err) {
+		return render(nil, o, false)
+	}
+	return manifest, err
+}
+
+// IsUnreachable reports whether err means the cluster could not be contacted.
+func IsUnreachable(err error) bool {
+	msg := err.Error()
+	for _, s := range []string{"cluster unreachable", "connection refused", "actively refused", "no such host", "i/o timeout"} {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}
+
+func render(client *k8s.Client, o Options, online bool) (string, error) {
 	ns := o.namespaceOrDefault()
 
-	// Rendering works without a cluster; it just cannot check API capabilities.
 	var cfg *action.Configuration
 	var err error
-	if client != nil && client.Config != nil {
+	if online {
 		cfg, err = config(client, ns)
 		if err != nil {
 			return "", err
@@ -155,7 +177,7 @@ func Template(client *k8s.Client, o Options) (string, error) {
 	install.Namespace = ns
 	install.DryRun = true
 	install.Replace = true
-	install.ClientOnly = client == nil || client.Config == nil
+	install.ClientOnly = !online
 	install.ChartPathOptions = chartPathOptions(o)
 	// Previewing is reading, not installing. Plenty of published charts ship a
 	// values.schema.json that is not valid JSON Schema itself — draft 2020-12
