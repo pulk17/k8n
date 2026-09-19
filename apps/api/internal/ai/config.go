@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/zalando/go-keyring"
 )
 
 // Where the assistant's model access comes from, and how it is stored.
@@ -17,8 +19,9 @@ import (
 // format, so one HTTP client covers OpenAI, Anthropic, Mistral, DeepSeek, Z.AI,
 // OpenRouter and anything self-hosted; Google keeps its own SDK.
 //
-// The key is written to ~/.k8n/config.json, owner-readable, on the machine that
-// makes the model calls. It is never sent to the browser: the UI gets a masked
+// The key is kept in the OS credential store of the machine that makes the model
+// calls, with ~/.k8n/config.json (owner-readable) holding the rest — and the
+// key too where no credential store exists. It is never sent to the browser: the UI gets a masked
 // hint and nothing more.
 
 // Provider identifies which API shape and endpoint to use.
@@ -90,6 +93,8 @@ type Config struct {
 	Model    string   `json:"model"`
 	APIKey   string   `json:"apiKey"`
 	BaseURL  string   `json:"baseUrl,omitempty"`
+	// InKeyring means the key is in the OS credential store, not in the file.
+	InKeyring bool `json:"keyInKeyring,omitempty"`
 	// Source says where this came from, so the UI can explain why a key it did
 	// not set is in use.
 	Source string `json:"-"` // "file" | "env" | ""
@@ -153,6 +158,10 @@ func Current() Config {
 // the answer when there is no file.
 func Init() {
 	if cfg, err := loadFile(); err == nil && cfg.Enabled() {
+		// A key saved before k8n used the credential store moves there now.
+		if !cfg.InKeyring && cfg.APIKey != "" {
+			cfg.InKeyring, _ = writeFile(cfg)
+		}
 		cfg.Source = "file"
 		set(cfg.resolved())
 		return
@@ -168,9 +177,11 @@ func Init() {
 // Save writes a new configuration and puts it into force immediately.
 func Save(cfg Config) error {
 	cfg = cfg.resolved()
-	if err := writeFile(cfg); err != nil {
+	inKeyring, err := writeFile(cfg)
+	if err != nil {
 		return err
 	}
+	cfg.InKeyring = inKeyring
 	cfg.Source = "file"
 	set(cfg)
 	return nil
@@ -183,6 +194,7 @@ func Forget() error {
 	if err != nil {
 		return err
 	}
+	_ = keyring.Delete(keyringService, path) // absent is fine
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("could not remove %s: %w", path, err)
 	}
@@ -238,24 +250,50 @@ func loadFile() (Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("%s is not valid JSON: %w", path, err)
 	}
+	if cfg.InKeyring {
+		key, err := keyring.Get(keyringService, path)
+		if err != nil {
+			// Saved by a build that used one fixed entry name: move it.
+			if key, err = keyring.Get(keyringService, "ai-api-key"); err == nil &&
+				keyring.Set(keyringService, path, key) == nil {
+				_ = keyring.Delete(keyringService, "ai-api-key")
+			}
+		}
+		if err != nil {
+			return Config{}, fmt.Errorf("the key is missing from the OS credential store: %w", err)
+		}
+		cfg.APIKey = key
+	}
 	return cfg, nil
 }
 
-func writeFile(cfg Config) error {
+// The credential is filed under the config file's path, so a second k8n with
+// its own home — a test run, another profile — can never read or overwrite
+// this one's key.
+const keyringService = "k8n"
+
+func writeFile(cfg Config) (inKeyring bool, err error) {
 	path, err := configPath()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("could not create %s: %w", filepath.Dir(path), err)
+		return false, fmt.Errorf("could not create %s: %w", filepath.Dir(path), err)
+	}
+	// The key goes to the OS credential store — Windows Credential Manager,
+	// macOS Keychain, the Linux secret service — which encrypts it to this login.
+	// Where there is none (a container, a headless server) it stays in the file.
+	cfg.InKeyring = keyring.Set(keyringService, path, cfg.APIKey) == nil
+	if cfg.InKeyring {
+		cfg.APIKey = ""
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
-		return err
+		return false, err
 	}
-	// 0600: this file holds an API key.
+	// 0600: this file may hold an API key.
 	if err := os.WriteFile(path, data, 0o600); err != nil {
-		return fmt.Errorf("could not write %s: %w", path, err)
+		return false, fmt.Errorf("could not write %s: %w", path, err)
 	}
-	return nil
+	return cfg.InKeyring, nil
 }

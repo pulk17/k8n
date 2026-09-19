@@ -34,6 +34,7 @@ func aiStatus() gin.H {
 		"baseUrl":    cfg.BaseURL,
 		"keyHint":    cfg.Masked(),
 		"source":     cfg.Source,
+		"keyStore":   map[bool]string{true: "keyring", false: "file"}[cfg.InKeyring],
 		"providers":  ai.Providers,
 		"mcpServers": ConnectedMCPServers(),
 	}

@@ -12,6 +12,8 @@ export interface AIProvider {
 }
 
 export interface AIStatus {
+  /** Where the key lives: the OS credential store, or the config file. */
+  keyStore?: "keyring" | "file";
   enabled: boolean;
   model: string;
   provider?: string;

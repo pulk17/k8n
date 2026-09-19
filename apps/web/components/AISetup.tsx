@@ -15,7 +15,7 @@ import { errorMessage } from "../lib/api";
  * Choosing which model the assistant talks to, while k8n is running.
  *
  * The key goes to the k8n process — the one on your machine, reading your
- * kubeconfig — and is written to a file there. It never comes back: this form
+ * kubeconfig — which keeps it in the OS credential store. It never comes back: this form
  * only ever learns that a key exists and what its first and last few characters
  * are. That is what makes the hosted page safe to use with a local engine.
  *
@@ -169,10 +169,17 @@ export default function AISetup({
       </label>
 
       <p className="text-[10px] leading-relaxed text-gray-600">
-        The key is stored by the k8n process on this machine, in{" "}
-        <code className="font-mono">~/.k8n/config.json</code>. It is never sent to the page, and
-        never leaves for anywhere but the provider you chose.
-        {status.source === "env" && " The current one came from the environment, not from here."}
+        {status.source === "env" ? (
+          <>The current key came from k8n&apos;s environment, not from here.</>
+        ) : status.keyStore === "file" ? (
+          <>
+            The key is stored by the k8n process on this machine, in{" "}
+            <code className="font-mono">~/.k8n/config.json</code> (this system has no credential store).
+          </>
+        ) : (
+          <>The key is kept in this computer&apos;s credential store, encrypted to your login.</>
+        )}{" "}
+        It is never sent to the page, and never leaves for anywhere but the provider you chose.
       </p>
 
       {result && (
