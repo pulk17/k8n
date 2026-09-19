@@ -341,17 +341,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const status = live ? live.status : "Deleted";
       const statusMessage = live ? live.statusMessage : "No longer in the cluster";
       const readyReplicas = live ? live.readyReplicas : node.data.readyReplicas;
+      const startup = live?.startup;
 
       if (
         node.data.status === status &&
         node.data.statusMessage === statusMessage &&
-        node.data.readyReplicas === readyReplicas
+        node.data.readyReplicas === readyReplicas &&
+        node.data.startup?.step === startup?.step &&
+        node.data.startup?.since === startup?.since
       ) {
         return node;
       }
 
       moved = true;
-      return { ...node, data: { ...node.data, status, statusMessage, readyReplicas } };
+      return { ...node, data: { ...node.data, status, statusMessage, readyReplicas, startup } };
     });
 
     // Status is not the user's work, so it neither dirties the canvas nor lands

@@ -37,6 +37,7 @@ import { confirmAction, notify, notifyError } from "../../lib/dialog";
 import ApiConnectionError from "../../components/ApiConnectionError";
 import InspectPanel from "../../components/InspectPanel";
 import ResourceMonitoringDashboard from "../../components/ResourceMonitoringDashboard";
+import StartupBar from "../../components/StartupBar";
 
 const KIND_ICONS: Record<string, typeof Box> = {
   Deployment: Box,
@@ -82,6 +83,9 @@ function detailsOf(r: K8sResource): [string, string][] {
 /** Status messages are only worth surfacing while something is still settling. */
 function messageTone(r: K8sResource): "error" | "warning" | "info" | null {
   if (!r.statusMessage) return null;
+  // Starting up is not an error; the progress bar says where it is. Only the
+  // scheduler's reason for having nowhere to put it is worth showing too.
+  if (r.startup) return r.startup.step === 1 ? "warning" : null;
   if (["Error", "Failed", "NotReady"].includes(r.status)) return "error";
   if (r.status === "Completed") return "info";
   if (r.status === "Pending") {
@@ -501,6 +505,8 @@ export default function DeployedPage() {
                                 )}
                               </dl>
                             )}
+
+                            {r.startup && <StartupBar startup={r.startup} />}
 
                             {tone && (
                               <div className={`mt-2 rounded border p-2 text-xs ${MESSAGE_STYLES[tone]}`}>

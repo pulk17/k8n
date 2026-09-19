@@ -43,9 +43,10 @@ type Resource struct {
 	Ports       []string `json:"ports,omitempty"`
 
 	// Pod specific
-	PodIP        string `json:"podIP,omitempty"`
-	NodeName     string `json:"nodeName,omitempty"`
-	RestartCount int32  `json:"restartCount,omitempty"`
+	PodIP        string   `json:"podIP,omitempty"`
+	NodeName     string   `json:"nodeName,omitempty"`
+	RestartCount int32    `json:"restartCount,omitempty"`
+	Startup      *Startup `json:"startup,omitempty"`
 
 	// ConfigMap/Secret specific
 	DataKeys []string `json:"dataKeys,omitempty"`
@@ -218,6 +219,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 			return
 		}
 		var items []Resource
+		var events map[string]*corev1.Event // fetched on the first starting pod
 		for _, p := range pods.Items {
 			status := "Unknown"
 			statusMessage := ""
@@ -322,6 +324,14 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 
 			cmRefs, secRefs, pvcRefs := podSpecRefs(&p.Spec)
 
+			var startup *Startup
+			if p.DeletionTimestamp == nil && (status == "Pending" || status == "NotReady") {
+				if events == nil {
+					events = latestPodEvents(ctx, client, namespace)
+				}
+				startup = startupOf(&p, status, events[p.Namespace+"/"+p.Name])
+			}
+
 			items = append(items, Resource{
 				Kind:               "Pod",
 				Name:               p.Name,
@@ -336,6 +346,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				PodIP:              p.Status.PodIP,
 				NodeName:           p.Spec.NodeName,
 				RestartCount:       restartCount,
+				Startup:            startup,
 				Image:              image,
 				Containers:         containerSummaries(p.Spec.Containers),
 				ConfigMapRefs:      cmRefs,
@@ -875,6 +886,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	for i := range resources {
 		resources[i].Protected = IsProtected(resources[i].Name, resources[i].Namespace)
 	}
+	shareStartup(resources)
 
 	// The fetchers run concurrently, so without this the order changes between
 	// requests and the resource list reshuffles on every refresh.

@@ -12,6 +12,7 @@ import { FieldValue, NodeData, fieldValue } from "../lib/graph";
 import { fieldsFor } from "../lib/nodeSchema";
 import { darkStatusStyle } from "../lib/constants";
 import FieldInput from "./FieldInput";
+import StartupBar from "./StartupBar";
 
 /**
  * A resource on the canvas.
@@ -220,6 +221,12 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
           </button>
         </div>
       </div>
+
+      {data.startup && (
+        <div className="px-3 pb-2">
+          <StartupBar compact startup={data.startup} />
+        </div>
+      )}
 
       {expanded ? (
         // nowheel is React Flow's opt-out: without it the wheel zooms the canvas

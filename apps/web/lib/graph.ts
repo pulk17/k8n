@@ -17,6 +17,8 @@ export interface NodeData {
   /** Why the status is what it is, when the cluster says. Set by the watch
       stream, so it is only ever present on imported nodes. */
   statusMessage?: string;
+  /** Start-up progress from the watch stream, while a workload is coming up. */
+  startup?: import("./api").Startup;
   /** Set by the canvas from lib/graphChecks, purely so the card can show a
       badge. Kept as primitives to avoid a cycle between the two modules. */
   issueCount?: number;

@@ -11,6 +11,14 @@ export interface ContainerSummary {
   image: string;
 }
 
+/** Step 1..4: find a node, download the image, start it, pass the health check. */
+export interface Startup {
+  step: number;
+  label: string;
+  /** RFC3339, when the current step began. */
+  since?: string;
+}
+
 export interface K8sResource {
   kind: string;
   name: string;
@@ -39,6 +47,8 @@ export interface K8sResource {
   podIP?: string;
   nodeName?: string;
   restartCount?: number;
+  /** Where a pod that is not ready yet has got to; on a workload, its slowest pod. */
+  startup?: Startup;
 
   dataKeys?: string[];
 

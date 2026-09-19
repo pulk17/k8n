@@ -14,6 +14,7 @@ import FieldInput from "./FieldInput";
 import InspectorChart from "./InspectorChart";
 import InspectorLearn from "./InspectorLearn";
 import InspectorLive from "./InspectorLive";
+import StartupBar from "./StartupBar";
 
 /**
  * One dock on the right of the canvas, for whatever is selected.
@@ -120,7 +121,9 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
             status dot tells you something is wrong; this is the line that tells
             you what. Falls back to the concept summary so the space is never
             just empty. */}
-        {statusMessage ? (
+        {node.data.startup ? (
+          <StartupBar startup={node.data.startup} />
+        ) : statusMessage ? (
           <p className={`mt-2 text-[11px] leading-snug ${tone.text}`}>{statusMessage}</p>
         ) : (
           concept && <p className="mt-2 text-[11px] leading-snug text-gray-500">{concept.summary}</p>
