@@ -281,3 +281,17 @@ func TestDiffIgnoresServerBookkeeping(t *testing.T) {
 		t.Errorf("the real change is missing:\n%s", d)
 	}
 }
+
+func TestForwardTargetFollowsAWorkload(t *testing.T) {
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "grafana", Namespace: "default"},
+		Spec:       appsv1.DeploymentSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "grafana"}}},
+	}
+	pod, port, err := forwardTarget(bg, fake.NewSimpleClientset(dep, readyGrafana("grafana-x")), "Deployment", "default", "grafana", 0)
+	if err != nil || pod.Name != "grafana-x" || port != 3000 {
+		t.Fatalf("got %v:%d, %v", pod, port, err)
+	}
+	if _, _, err := forwardTarget(bg, fake.NewSimpleClientset(dep), "Deployment", "default", "grafana", 0); !errors.Is(err, errBadRequest) {
+		t.Errorf("no ready pod should be a clear error, got %v", err)
+	}
+}

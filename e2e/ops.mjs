@@ -131,6 +131,11 @@ await sleep(500);
 page = await fetch(tunnel.url).then(() => "still open").catch(() => "closed");
 check("and is really closed", page === "closed");
 
+r = await api("POST", "/api/portforward", { kind: "Deployment", namespace: NS, name: "web" });
+page = r.status === 200 ? await fetch(r.data.url).then(x => x.text()).catch(e => String(e)) : JSON.stringify(r.data);
+check("a Deployment can be opened too, through one of its pods", page.includes("nginx"), r.data.url);
+if (r.status === 200) await api("DELETE", `/api/portforward/${r.data.id}`);
+
 // --- exec, secrets, RBAC ---------------------------------------------------------
 const pod = (await resources()).find(x => x.kind === "Pod" && x.name.startsWith("web-") && x.status === "Running");
 r = await api("POST", "/api/exec", { namespace: NS, pod: pod?.name, command: "echo hello-from-$HOSTNAME | tr a-z A-Z" });

@@ -156,6 +156,7 @@ export const NODE_SCHEMA: Record<string, FieldSpec[]> = {
       label: "Type",
       type: "select",
       options: ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"],
+      hint: "ClusterIP is reachable only inside the cluster. NodePort opens a port on every node — but on Docker Desktop and kind the nodes are containers, so it is not on localhost. To open anything locally, apply it and use Open in browser.",
     },
     {
       key: "nodePort",

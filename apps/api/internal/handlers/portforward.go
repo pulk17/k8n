@@ -97,8 +97,59 @@ func forwardTarget(ctx context.Context, cs kubernetes.Interface, kind, namespace
 			return nil, 0, badRequest("could not find port %s on %s", sp.TargetPort.String(), pod.Name)
 		}
 		return pod, target, nil
+
+	case "Deployment", "StatefulSet", "DaemonSet":
+		selector, err := workloadSelector(ctx, cs, kind, namespace, name)
+		if err != nil {
+			return nil, 0, err
+		}
+		pods, err := cs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+		if err != nil {
+			return nil, 0, err
+		}
+		pod := readyPod(pods.Items)
+		if pod == nil {
+			return nil, 0, badRequest("%s has no ready pod yet", name)
+		}
+		if port == 0 {
+			port = firstContainerPort(pod)
+		}
+		if port == 0 {
+			return nil, 0, badRequest("%s declares no container port; say which one", name)
+		}
+		return pod, port, nil
 	}
-	return nil, 0, badRequest("%s cannot be port-forwarded; pick its Service or a Pod", kind)
+	return nil, 0, badRequest("%s cannot be port-forwarded; pick a Service, a workload or a Pod", kind)
+}
+
+// workloadSelector is a workload's pod selector as a label-selector string.
+func workloadSelector(ctx context.Context, cs kubernetes.Interface, kind, namespace, name string) (string, error) {
+	var sel *metav1.LabelSelector
+	switch kind {
+	case "Deployment":
+		d, err := cs.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+		sel = d.Spec.Selector
+	case "StatefulSet":
+		s, err := cs.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+		sel = s.Spec.Selector
+	default:
+		d, err := cs.AppsV1().DaemonSets(namespace).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+		sel = d.Spec.Selector
+	}
+	s, err := metav1.LabelSelectorAsSelector(sel)
+	if err != nil {
+		return "", err
+	}
+	return s.String(), nil
 }
 
 func readyPod(pods []corev1.Pod) *corev1.Pod {

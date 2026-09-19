@@ -16,6 +16,7 @@ import InspectorLearn from "./InspectorLearn";
 import InspectorLive from "./InspectorLive";
 import StartupBar from "./StartupBar";
 import { IngressControllerCheck } from "./InstallAddon";
+import { FORWARDABLE, OpenInBrowser } from "./ResourceActions";
 
 /**
  * One dock on the right of the canvas, for whatever is selected.
@@ -46,6 +47,7 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
   const selectedNodeId = useCanvasStore(s => s.selectedNodeId);
   const updateNodeData = useCanvasStore(s => s.updateNodeData);
   const deleteNode = useCanvasStore(s => s.deleteNode);
+  const offline = useCanvasStore(s => s.offline);
 
   const node = (nodes.find(n => n.id === selectedNodeId) ?? null) as Node<NodeData> | null;
 
@@ -128,6 +130,20 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
           <p className={`mt-2 text-[11px] leading-snug ${tone.text}`}>{statusMessage}</p>
         ) : (
           concept && <p className="mt-2 text-[11px] leading-snug text-gray-500">{concept.summary}</p>
+        )}
+
+        {/* Reach it from this computer, once it exists in the cluster. */}
+        {FORWARDABLE.includes(kind) && !offline && !["Not Deployed", "From chart", "Deleted"].includes(status ?? "") && (
+          <div className="mt-2">
+            <OpenInBrowser
+              key={node.id}
+              dark
+              kind={kind}
+              namespace={namespace}
+              name={name}
+              ports={[Number(fieldValue(node.data, kind === "Service" ? "port" : "containerPort"))].filter(n => n > 0)}
+            />
+          </div>
         )}
       </header>
 

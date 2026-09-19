@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, ExternalLink, Eye, Loader2, Play, RotateCcw, RefreshCw, Scale, Shield, Terminal } from "lucide-react";
+import { Copy, ExternalLink, Eye, Loader2, Play, RotateCcw, RefreshCw, Scale, Shield, Terminal, X } from "lucide-react";
 import {
+  Forward,
   K8sResource,
   Permission,
   errorMessage,
@@ -10,6 +11,7 @@ import {
   fetchPermissions,
   revealSecret,
   startForward,
+  stopForward,
   workloadAction,
 } from "../lib/api";
 import { confirmAction, notify, notifyError } from "../lib/dialog";
@@ -44,8 +46,9 @@ export default function ResourceActions({ r, jobs = [] }: { r: K8sResource; jobs
 
   const blocks: React.ReactNode[] = [];
 
-  if (r.kind === "Service" || r.kind === "Pod") {
-    blocks.push(<OpenInBrowser key="forward" r={r} busy={busy} run={run} spin={spin} />);
+  if (FORWARDABLE.includes(r.kind)) {
+    const ports = (r.ports ?? []).map(p => parseInt(p, 10)).filter(n => !Number.isNaN(n));
+    blocks.push(<OpenInBrowser key="forward" kind={r.kind} namespace={r.namespace} name={r.name} ports={ports} />);
   }
   if (r.kind === "Secret") blocks.push(<SecretValues key="secret" r={r} />);
   if (r.kind === "Deployment" || r.kind === "StatefulSet") {
@@ -105,15 +108,51 @@ type Runner = {
   spin: (what: string, Icon: typeof Play) => React.ReactNode;
 };
 
-/** Port-forward, named for what people want from it. */
-function OpenInBrowser({ r, busy, run, spin }: { r: K8sResource } & Runner) {
-  const ports = (r.ports ?? []).map(p => parseInt(p, 10)).filter(n => !Number.isNaN(n));
+/** Kinds a tunnel can reach: a Service, a workload (one of its ready pods), a Pod. */
+export const FORWARDABLE = ["Service", "Deployment", "StatefulSet", "DaemonSet", "Pod"];
+
+/**
+ * Port-forward, named for what people want from it. A pod's port is on the
+ * cluster's own network, and on a laptop cluster a NodePort is not reachable
+ * either, so this is how anything in the cluster gets opened locally.
+ */
+export function OpenInBrowser({
+  kind,
+  namespace,
+  name,
+  ports = [],
+  dark = false,
+}: {
+  kind: string;
+  namespace: string;
+  name: string;
+  /** Candidate ports; empty lets the engine pick the declared one. */
+  ports?: number[];
+  /** The canvas dock is always dark; the Deployed page follows the theme. */
+  dark?: boolean;
+}) {
   const [port, setPort] = useState(ports[0] ?? 0);
-  const [url, setUrl] = useState<string | null>(null);
+  const [tunnel, setTunnel] = useState<Forward | null>(null);
+  const [busy, setBusy] = useState(false);
+  const btn = dark
+    ? "inline-flex items-center gap-1.5 rounded border border-neutral-700 px-2.5 py-1.5 text-xs text-gray-300 hover:border-neutral-600 hover:text-gray-100 disabled:opacity-50"
+    : button;
+
+  const act = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      notifyError(errorMessage(err));
+    } finally {
+      setBusy(false);
+      window.dispatchEvent(new Event(TUNNELS_CHANGED));
+    }
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {ports.length > 1 && (
+      {ports.length > 1 && !tunnel && (
         <select className={input} value={port} onChange={e => setPort(Number(e.target.value))} aria-label="Port">
           {ports.map(p => (
             <option key={p} value={p}>
@@ -122,29 +161,36 @@ function OpenInBrowser({ r, busy, run, spin }: { r: K8sResource } & Runner) {
           ))}
         </select>
       )}
-      <button
-        className={button}
-        disabled={busy !== null}
-        title="Open a tunnel from this computer to it (kubectl port-forward)"
-        onClick={() =>
-          run("forward", async () => {
-            const f = await startForward(r.kind, r.namespace, r.name, port || undefined);
-            setUrl(f.url);
-            window.dispatchEvent(new Event(TUNNELS_CHANGED));
-            window.open(f.url, "_blank", "noopener");
-          })
-        }
-      >
-        {spin("forward", ExternalLink)} Open in browser
-      </button>
-      {url ? (
-        <a href={url} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-600 hover:underline dark:text-blue-400">
-          {url}
-        </a>
+      {tunnel ? (
+        <>
+          <a href={tunnel.url} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-500 hover:underline">
+            {tunnel.url}
+          </a>
+          <button className={btn} disabled={busy} onClick={() => act(async () => {
+            await stopForward(tunnel.id);
+            setTunnel(null);
+          })}>
+            <X className="h-3.5 w-3.5" /> Stop
+          </button>
+        </>
       ) : (
-        <span className="text-xs text-gray-500">
-          Pods live on the cluster&apos;s own network; this tunnels one port to localhost.
-        </span>
+        <>
+          <button
+            className={btn}
+            disabled={busy}
+            title="Open a tunnel from this computer to it (kubectl port-forward)"
+            onClick={() =>
+              act(async () => {
+                const f = await startForward(kind, namespace, name, port || undefined);
+                setTunnel(f);
+                window.open(f.url, "_blank", "noopener");
+              })
+            }
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ExternalLink className="h-3.5 w-3.5" />} Open in browser
+          </button>
+          <span className="text-xs text-gray-500">Tunnels one port of it to localhost.</span>
+        </>
       )}
     </div>
   );

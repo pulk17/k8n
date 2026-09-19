@@ -322,13 +322,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     let moved = false;
 
     const nodes = get().nodes.map(node => {
-      const origin = node.data?.origin;
-      if (origin !== "cluster" && origin !== "helm") return node;
-
+      const origin = node.data?.origin ?? "canvas";
       const live =
         origin === "cluster"
           ? byUid.get(node.id)
-          : byIdentity.get(`${node.data.kind}/${node.data.namespace}/${node.data.name}`);
+          : byIdentity.get(`${node.data.kind}/${node.data.namespace || "default"}/${node.data.name}`);
+
+      // A drawn card that is not in the cluster simply has not been applied
+      // yet; once it is, it picks up live status like an imported one.
+      if (!live && origin === "canvas") {
+        return node.data.status === "Not Deployed"
+          ? node
+          : ((moved = true),
+            { ...node, data: { ...node.data, status: "Not Deployed", statusMessage: undefined, startup: undefined } });
+      }
 
       // An uninstalled chart is not a deleted resource — it was never there.
       if (!live && origin === "helm") {

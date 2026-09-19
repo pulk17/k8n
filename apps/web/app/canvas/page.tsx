@@ -153,11 +153,9 @@ function CanvasPageContent() {
   // Imported nodes track the cluster, so their status dots move on their own.
   // So do the resources a chart renders, once its release is installed — that
   // is the whole point of drawing them: the card you drew is where you find out
-  // the image would not pull. A hand-drawn graph has nothing live to follow, so
-  // it opens no stream.
-  const trackingCluster = nodes.some(
-    (n) => n.data?.origin === "cluster" || n.data?.origin === "helm"
-  );
+  // the image would not pull. Drawn cards follow it too once applied, so the
+  // graph you built is where you see it running and open it in a browser.
+  const trackingCluster = !offline && nodes.length > 0;
   useEffect(() => {
     if (!trackingCluster) return;
     return watchResources(
