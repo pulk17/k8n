@@ -390,8 +390,8 @@ func buildAuthoredObject(n GraphNode, r *resolver) (map[string]interface{}, erro
 	case "NetworkPolicy":
 		obj["spec"] = buildNetworkPolicySpec(n, r)
 
-	case "ServiceAccount":
-		// A ServiceAccount is just metadata; the binding happens on the pods
+	case "ServiceAccount", "Namespace":
+		// Both are just metadata. A ServiceAccount's binding happens on the pods
 		// that reference it (see buildPodSpec).
 
 	case "Role", "ClusterRole":
@@ -514,6 +514,23 @@ func buildPodSpec(n GraphNode, r *resolver, restartPolicy ...string) map[string]
 
 	if res := buildResources(n); res != nil {
 		container["resources"] = res
+	}
+
+	// One health path becomes both probes: readiness gates traffic, liveness
+	// restarts a container that has hung. Liveness waits longer, so a slow
+	// start is not mistaken for a hang.
+	if path := strField(n.Data, "healthPath"); path != "" {
+		if port := containerPortFor(n); port > 0 {
+			check := func(delay int) map[string]interface{} {
+				return map[string]interface{}{
+					"httpGet":             map[string]interface{}{"path": path, "port": port},
+					"initialDelaySeconds": delay,
+					"periodSeconds":       10,
+				}
+			}
+			container["readinessProbe"] = check(5)
+			container["livenessProbe"] = check(30)
+		}
 	}
 
 	// Storage edges: each PVC becomes a volume plus a mount.

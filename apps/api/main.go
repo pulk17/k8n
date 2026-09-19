@@ -31,6 +31,9 @@ var (
 // mountUI serves the embedded frontend; set only in builds tagged embedui (ui.go).
 var mountUI func(*gin.Engine)
 
+// version is set by the release build: -ldflags "-X main.version=v0.2.0".
+var version = "dev"
+
 // requireToken rejects anything that reaches the API or the MCP endpoint
 // without the pairing token.
 //
@@ -161,6 +164,7 @@ func openInBrowser(url string) error {
 
 func main() {
 	flag.Parse()
+	handlers.Version = version
 
 	var err error
 	if k8sClient, err = k8s.NewClient(""); err != nil {
@@ -218,6 +222,16 @@ func main() {
 	r.GET("/api/schema/:kind", handlers.GetSchema(getK8sClient))
 	r.DELETE("/api/resource/delete", handlers.DeleteResourceHandler(getK8sClient))
 	r.POST("/api/resource/finalize", handlers.FinishDeletionHandler(getK8sClient))
+	r.POST("/api/cluster/namespaces", handlers.CreateNamespaceHandler(getK8sClient))
+	r.DELETE("/api/cluster/namespaces/:name", handlers.DeleteNamespaceHandler(getK8sClient))
+	r.GET("/api/cluster/ingressclasses", handlers.IngressClassesHandler(getK8sClient))
+	r.GET("/api/secret/:namespace/:name", handlers.RevealSecretHandler(getK8sClient))
+	r.POST("/api/workload/:action", handlers.WorkloadActionHandler(getK8sClient))
+	r.POST("/api/exec", handlers.ExecHandler(getK8sClient))
+	r.GET("/api/rbac/serviceaccount/:namespace/:name", handlers.ServiceAccountPermissionsHandler(getK8sClient))
+	r.GET("/api/portforward", handlers.ListForwardsHandler())
+	r.POST("/api/portforward", handlers.StartForwardHandler(getK8sClient))
+	r.DELETE("/api/portforward/:id", handlers.StopForwardHandler())
 
 	// Metrics
 	r.GET("/api/metrics/check", handlers.CheckMetricsServer(getK8sClient))
@@ -259,6 +273,7 @@ func main() {
 	r.POST("/api/graph/compile", handlers.CompileGraph(getK8sClient))
 	r.POST("/api/graph/import", handlers.ImportManifest())
 	r.POST("/api/graph/apply", handlers.ApplyResources(getK8sClient)) // ?dryRun=true
+	r.POST("/api/graph/diff", handlers.DiffHandler(getK8sClient))
 
 	// Saved workflows
 	r.POST("/api/graph/save", handlers.SaveGraph())

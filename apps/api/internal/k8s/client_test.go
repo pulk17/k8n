@@ -69,3 +69,23 @@ func TestGetContextsHonoursAnEmptyKUBECONFIG(t *testing.T) {
 		t.Errorf("expected no contexts, got %v", contexts)
 	}
 }
+
+// The default context has a name too, and the UI shows it: without one there
+// is no telling which cluster an apply is about to reach.
+func TestNewClientNamesTheDefaultContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	kubeconfig := "apiVersion: v1\nkind: Config\nclusters:\n- cluster:\n    server: https://example.invalid:6443\n  name: c\ncontexts:\n- context:\n    cluster: c\n    user: u\n  name: staging\ncurrent-context: staging\nusers:\n- name: u\n  user: {}\n"
+	if err := os.WriteFile(path, []byte(kubeconfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", path)
+	t.Setenv("KUBERNETES_SERVICE_HOST", "") // not in a pod
+
+	client, err := NewClient("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.Context != "staging" {
+		t.Errorf("Context = %q, want the current context", client.Context)
+	}
+}

@@ -67,6 +67,13 @@ func NewClient(contextName string) (*Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to load kubeconfig client config: %w", err)
 		}
+		// The default context still has a name, and the UI shows it so nobody
+		// applies to the wrong cluster without seeing which one it is.
+		if contextName == "" {
+			if raw, err := clientConfig.RawConfig(); err == nil {
+				contextName = raw.CurrentContext
+			}
+		}
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)

@@ -56,11 +56,11 @@ jobs:
             [ "$os" = "windows" ] && ext=".exe"
             echo "building $os/$arch"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-              go build -tags embedui -trimpath -ldflags="-s -w" \
+              go build -tags embedui -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
               -o "../../dist/k8n-$os-$arch$ext" .
             # The stdio MCP server, for AI clients that spawn it directly.
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-              go build -trimpath -ldflags="-s -w" \
+              go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
               -o "../../dist/k8n-mcp-$os-$arch$ext" ./cmd/k8n-mcp
           done
 

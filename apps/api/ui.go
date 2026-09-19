@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,6 +26,13 @@ func init() {
 	}
 	mountUI = func(r *gin.Engine) {
 		site, _ := fs.Sub(uiFiles, "ui")
-		r.NoRoute(gin.WrapH(http.FileServer(http.FS(site))))
+		files := http.FileServer(http.FS(site))
+		r.NoRoute(func(c *gin.Context) {
+			p := c.Request.URL.Path
+			if _, err := fs.Stat(site, strings.TrimPrefix(p, "/")); err != nil {
+				c.Request.URL.Path = segmentFile(p)
+			}
+			files.ServeHTTP(c.Writer, c.Request)
+		})
 	}
 }

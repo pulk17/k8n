@@ -83,6 +83,23 @@ func ApplyResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	}
 }
 
+// resourceClient finds the API endpoint for an object from its kind.
+func resourceClient(client *k8s.Client, mapper meta.RESTMapper, obj *unstructured.Unstructured) (dynamic.ResourceInterface, error) {
+	gvk := obj.GroupVersionKind()
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return nil, fmt.Errorf("Unknown resource type %s: %w", gvk.String(), err)
+	}
+	if mapping.Scope.Name() == meta.RESTScopeNameRoot {
+		return client.DynamicClient.Resource(mapping.Resource), nil
+	}
+	ns := obj.GetNamespace()
+	if ns == "" {
+		ns = "default"
+	}
+	return client.DynamicClient.Resource(mapping.Resource).Namespace(ns), nil
+}
+
 // ApplyManifests server-side applies a multi-document manifest, creating any
 // missing namespaces first. It returns the resources it handled plus any
 // per-resource failures. Shared by the REST handler and the MCP apply tool so
@@ -128,26 +145,18 @@ func ApplyManifests(ctx context.Context, client *k8s.Client, manifest string, is
 	var errorsList []ErrorItem
 
 	for _, obj := range objects {
-		gvk := obj.GroupVersionKind()
-		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		dr, err := resourceClient(client, mapper, obj)
 		if err != nil {
-			errorsList = append(errorsList, ErrorItem{
-				Resource: obj.GetName(),
-				Message:  "Unknown resource type " + gvk.String() + ": " + err.Error(),
-			})
+			errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: err.Error()})
 			continue
 		}
 
-		var dr dynamic.ResourceInterface = client.DynamicClient.Resource(mapping.Resource)
-		if mapping.Scope.Name() != meta.RESTScopeNameRoot {
-			ns := obj.GetNamespace()
-			if ns == "" {
-				ns = "default"
-			}
-			dr = client.DynamicClient.Resource(mapping.Resource).Namespace(ns)
-		}
-
-		opts := metav1.PatchOptions{FieldManager: "k8n"}
+		// Force: the canvas is the declaration, so Apply takes back a field
+		// that something else changed since — a Scale button, kubectl edit —
+		// as `kubectl apply --server-side --force-conflicts` does. Without it,
+		// applying after pressing Scale failed with a field-ownership conflict.
+		force := true
+		opts := metav1.PatchOptions{FieldManager: "k8n", Force: &force}
 		if isDryRun {
 			opts.DryRun = []string{metav1.DryRunAll}
 		}

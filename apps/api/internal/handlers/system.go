@@ -10,6 +10,10 @@ import (
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
 )
 
+// Version is this build's release tag, "dev" for a local build. The page
+// compares it with the latest release to say when an update is out.
+var Version = "dev"
+
 // ClientGetter returns the currently connected cluster client, or nil.
 type ClientGetter func() *k8s.Client
 
@@ -18,7 +22,7 @@ type ClientGetter func() *k8s.Client
 // down" screen, so it must answer even when everything else is broken.
 func Health(getClient ClientGetter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		health := gin.H{"status": "ok", "database": "disconnected", "kubernetes": "disconnected"}
+		health := gin.H{"status": "ok", "database": "disconnected", "kubernetes": "disconnected", "version": Version}
 
 		if db := GetDB(); db != nil && db.Ping() == nil {
 			health["database"] = "connected"
