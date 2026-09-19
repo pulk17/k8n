@@ -15,6 +15,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"google.golang.org/genai"
@@ -129,7 +132,42 @@ type Event struct {
 }
 
 // maxToolRounds bounds the agent loop so a confused model cannot spin forever.
-const maxToolRounds = 6
+// Every round is a request against the user's quota; the prompt asks for
+// parallel tool calls, so an answer should never need more than this.
+const maxToolRounds = 4
+
+// maxRateLimitWait is the longest one rate limit is waited out. Longer than
+// this is a daily quota, and waiting will not help.
+const maxRateLimitWait = 45 * time.Second
+
+var retryIn = regexp.MustCompile(`(?i)retry(?:Delay)?[^0-9]{0,12}([0-9.]+)s`)
+
+// fits reports whether waiting d still leaves time for the retry. A quick check
+// such as Test has a short deadline, and should say "rate limited" at once
+// rather than time out waiting.
+func fits(ctx context.Context, d time.Duration) bool {
+	deadline, ok := ctx.Deadline()
+	return !ok || time.Until(deadline) > d+10*time.Second
+}
+
+// rateLimitDelay reports whether err is a rate limit and how long the provider
+// asked to wait. Gemini says "Please retry in 37.8s"; OpenAI-shaped APIs put it
+// in a header this client does not see, so they get a guess.
+func rateLimitDelay(err error) (time.Duration, bool) {
+	if err == nil {
+		return 0, false
+	}
+	text := err.Error()
+	if !strings.Contains(text, "429") && !strings.Contains(text, "RESOURCE_EXHAUSTED") {
+		return 0, false
+	}
+	if m := retryIn.FindStringSubmatch(text); m != nil {
+		if secs, perr := strconv.ParseFloat(m[1], 64); perr == nil {
+			return time.Duration(secs*float64(time.Second)) + time.Second, true
+		}
+	}
+	return 20 * time.Second, true
+}
 
 // Run executes a full assistant turn: the model may call tools repeatedly, and
 // each step is reported through emit.
@@ -152,9 +190,23 @@ func (c *Client) Run(
 	}
 
 	contents := history
+	waited := false
 
 	for round := 0; round < maxToolRounds; round++ {
 		candidate, err := c.backend.generate(ctx, systemPrompt, contents, decls)
+		// A free-tier key allows a handful of requests a minute. Waiting out one
+		// rate limit costs nothing extra; failing the turn wastes every request
+		// already spent on it.
+		if delay, limited := rateLimitDelay(err); limited && !waited && delay <= maxRateLimitWait && fits(ctx, delay) {
+			waited = true
+			emit(Event{Type: "tool", Tool: "rate_limited", Detail: fmt.Sprintf("waiting %ds for the provider's rate limit", int(delay.Seconds()))})
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+			candidate, err = c.backend.generate(ctx, systemPrompt, contents, decls)
+		}
 		if err != nil {
 			return err
 		}
@@ -205,7 +257,7 @@ func (c *Client) Run(
 			} else {
 				// Tool output is cluster data. It is wrapped as a plain value so
 				// the model treats it as an observation, not as a new prompt.
-				result["result"] = truncate(output, 24000)
+				result["result"] = truncate(output, 8000) // tokens are quota too
 			}
 
 			responseParts = append(responseParts, &genai.Part{

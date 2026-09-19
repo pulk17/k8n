@@ -43,6 +43,8 @@ export default function AISetup({
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const chosen = providers.find(p => p.id === provider);
+  // The saved key belongs to the saved provider; another provider needs its own.
+  const keyKept = Boolean(status.keyHint) && provider === status.provider;
   const config: AIConfigRequest = { provider, model, baseUrl, apiKey };
 
   /** Switching provider carries its defaults across, but never the key. */
@@ -154,10 +156,16 @@ export default function AISetup({
           type="password"
           value={apiKey}
           onChange={e => setApiKey(e.target.value)}
-          placeholder={status.keyHint ? `${status.keyHint} — blank keeps it` : "paste your key"}
+          placeholder={keyKept ? "paste a new key to replace it" : "paste your key"}
           autoComplete="off"
           className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 font-mono text-xs text-gray-100 placeholder:text-neutral-600 focus:border-blue-500 focus:outline-none"
         />
+        {keyKept && (
+          <span className="mt-1 block text-[10px] text-gray-500">
+            Saved key <code className="font-mono text-gray-400">{status.keyHint}</code> — leave blank
+            to keep it.
+          </span>
+        )}
       </label>
 
       <p className="text-[10px] leading-relaxed text-gray-600">

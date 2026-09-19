@@ -18,18 +18,24 @@ import (
 // GetAIStatus tells the frontend whether to show AI features at all.
 func GetAIStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		cfg := ai.Current()
-		c.JSON(http.StatusOK, gin.H{
-			"enabled":    cfg.Enabled(),
-			"model":      cfg.Model,
-			"provider":   cfg.Provider,
-			"baseUrl":    cfg.BaseURL,
-			"keyHint":    cfg.Masked(),
-			"source":     cfg.Source,
-			"providers":  ai.Providers,
-			"agents":     []string{"inspector", "architect"},
-			"mcpServers": ConnectedMCPServers(),
-		})
+		c.JSON(http.StatusOK, aiStatus())
+	}
+}
+
+// aiStatus is the one shape every AI settings route answers with. Save and
+// Forget used to reply with a shorter one that had no provider list, and the
+// settings form, which swaps in whatever came back, lost its provider options.
+func aiStatus() gin.H {
+	cfg := ai.Current()
+	return gin.H{
+		"enabled":    cfg.Enabled(),
+		"model":      cfg.Model,
+		"provider":   cfg.Provider,
+		"baseUrl":    cfg.BaseURL,
+		"keyHint":    cfg.Masked(),
+		"source":     cfg.Source,
+		"providers":  ai.Providers,
+		"mcpServers": ConnectedMCPServers(),
 	}
 }
 
@@ -83,8 +89,15 @@ func AIChat(clientGetter ClientGetter) gin.HandlerFunc {
 		sseHeaders(c)
 		emit := func(ev ai.Event) { sseSend(c, ev) }
 
-		history := make([]*genai.Content, 0, len(req.History)+1)
-		for _, turn := range req.History {
+		// Only the recent conversation goes back: every earlier turn is resent on
+		// every request, and old answers rarely matter to the new question.
+		turns := req.History
+		if len(turns) > maxHistoryTurns {
+			turns = turns[len(turns)-maxHistoryTurns:]
+		}
+		history := make([]*genai.Content, 0, len(turns)+1)
+		for _, turn := range turns {
+			turn.Text = shorten(turn.Text, 1500)
 			if turn.Role == "model" {
 				history = append(history, ai.ModelContent(turn.Text))
 			} else {
@@ -93,13 +106,23 @@ func AIChat(clientGetter ClientGetter) gin.HandlerFunc {
 		}
 		history = append(history, ai.UserContent(buildUserTurn(req)))
 
-		tools := agentTeam(client, clientGetter, req.Graph, remoteMCP, emit)
+		tools := assistantTools(clientGetter, req.Graph, remoteMCP, emit)
 
-		if err := client.Run(ctx, supervisorPrompt, history, tools, emit); err != nil {
+		if err := client.Run(ctx, assistantPrompt, history, tools, emit); err != nil {
 			emit(ai.Event{Type: "error", Message: err.Error()})
 		}
 		emit(ai.Event{Type: "done"})
 	}
+}
+
+const maxHistoryTurns = 6
+
+// shorten keeps the start of a long earlier answer; the conclusion is up front.
+func shorten(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 // buildUserTurn attaches the canvas context to the user's question, so the
@@ -222,7 +245,7 @@ func AIExplain(clientGetter ClientGetter) gin.HandlerFunc {
 			target.Kind(), target.Name(), buildUserTurn(chatRequest{Graph: req.Graph}), manifest)
 
 		var sb strings.Builder
-		err = client.Run(ctx, inspectorPrompt, []*genai.Content{ai.UserContent(prompt)}, nil, func(ev ai.Event) {
+		err = client.Run(ctx, assistantPrompt, []*genai.Content{ai.UserContent(prompt)}, nil, func(ev ai.Event) {
 			if ev.Type == "text" {
 				sb.WriteString(ev.Text)
 			}

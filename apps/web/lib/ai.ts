@@ -23,7 +23,6 @@ export interface AIStatus {
   /** What can be chosen, with a starting model for each. */
   providers?: AIProvider[];
   /** The specialists the supervisor can delegate to. */
-  agents?: string[];
   /** External MCP servers whose tools the assistant can also call. */
   mcpServers?: string[];
 }

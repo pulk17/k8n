@@ -38,10 +38,11 @@ func (r aiConfigRequest) config() ai.Config {
 }
 
 // keptKey lets someone change the model without retyping the key: an empty key
-// in the request means "the one already saved".
+// in the request means "the one already saved" — but only for the same
+// provider, or switching Gemini to OpenAI would send the Gemini key to OpenAI.
 func keptKey(cfg ai.Config) ai.Config {
-	if cfg.APIKey == "" {
-		cfg.APIKey = ai.Current().APIKey
+	if saved := ai.Current(); cfg.APIKey == "" && cfg.Provider == saved.Provider {
+		cfg.APIKey = saved.APIKey
 	}
 	return cfg
 }
@@ -69,15 +70,7 @@ func SetAIConfig() gin.HandlerFunc {
 			return
 		}
 
-		saved := ai.Current()
-		c.JSON(http.StatusOK, gin.H{
-			"enabled":  saved.Enabled(),
-			"provider": saved.Provider,
-			"model":    saved.Model,
-			"baseUrl":  saved.BaseURL,
-			"keyHint":  saved.Masked(),
-			"source":   saved.Source,
-		})
+		c.JSON(http.StatusOK, aiStatus())
 	}
 }
 
@@ -154,14 +147,7 @@ func ForgetAIConfig() gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not remove the saved key", "details": err.Error()})
 			return
 		}
-		cfg := ai.Current()
-		c.JSON(http.StatusOK, gin.H{
-			"enabled":  cfg.Enabled(),
-			"provider": cfg.Provider,
-			"model":    cfg.Model,
-			"keyHint":  cfg.Masked(),
-			"source":   cfg.Source,
-		})
+		c.JSON(http.StatusOK, aiStatus())
 	}
 }
 

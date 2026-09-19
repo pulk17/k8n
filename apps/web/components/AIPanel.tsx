@@ -250,7 +250,7 @@ export default function AIPanel() {
             key={`${status.provider}|${status.model}|${status.baseUrl}|${status.keyHint}`}
             status={status}
             onChanged={next => {
-              setStatus(next);
+              setStatus(prev => ({ ...prev, ...next }));
               if (next.enabled) setShowSetup(false);
             }}
           />
