@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Editor from "@monaco-editor/react";
 import { X, Play, Loader2, Copy, Download, AlertTriangle, Info, Check } from "lucide-react";
-import { CompileNote } from "../lib/api";
+import { Change, CompileNote, diffYaml, errorMessage, fetchHealth } from "../lib/api";
+import { applyRisks } from "../lib/applyRisks";
 import { chartWarnings } from "../lib/chartChecks";
+import { confirmAction } from "../lib/dialog";
 
 interface YamlPreviewProps {
   yaml: string;
@@ -29,6 +31,37 @@ export default function YamlPreview({
   yaml, helmYaml, objects, notes, scope, applying, onApply, onClose,
 }: YamlPreviewProps) {
   const [copied, setCopied] = useState(false);
+  const [view, setView] = useState<"manifest" | "changes">("manifest");
+  const [changes, setChanges] = useState<Change[] | string | null>(null);
+  const [context, setContext] = useState<string>();
+
+  useEffect(() => {
+    fetchHealth().then(h => setContext(h?.context)).catch(() => {});
+  }, []);
+
+  const showChanges = () => {
+    setView("changes");
+    if (changes === null) {
+      diffYaml(yaml)
+        .then(setChanges)
+        .catch(err => setChanges(errorMessage(err)));
+    }
+  };
+
+  // The last word before something reaches a cluster that matters.
+  const apply = async () => {
+    const risks = applyRisks(yaml, context);
+    if (risks.length > 0) {
+      const ok = await confirmAction({
+        title: "Apply here?",
+        message: `${risks.join("\n\n")}\n\nCheck the Changes tab first if you are not sure.`,
+        confirmLabel: "Apply anyway",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    onApply();
+  };
 
   // Charts are shown after the manifest, separated by a comment, so what a
   // release will create is reviewable even though Helm installs it, not us.
@@ -68,7 +101,23 @@ ${helmYaml}` : yaml;
             <p className="text-[11px] text-gray-500 mt-0.5">
               {objects} direct {objects === 1 ? "resource" : "resources"}
               {helmYaml ? " · Helm preview included" : ""} · {scope} · dry-run runs before anything is applied
+              {context && <> · cluster <span className="font-mono text-gray-400">{context}</span></>}
             </p>
+            <div className="mt-2 flex gap-1" role="tablist">
+              {(["manifest", "changes"] as const).map(v => (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => (v === "changes" ? showChanges() : setView(v))}
+                  className={`rounded px-2 py-0.5 text-[11px] ${
+                    view === v ? "bg-neutral-700 text-gray-100" : "text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  {v === "manifest" ? "Manifest" : "Changes"}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -142,7 +191,9 @@ ${helmYaml}` : yaml;
         )}
 
         <div className="flex-1 min-h-0">
-          {hasManifest ? (
+          {view === "changes" ? (
+            <ChangeList changes={changes} />
+          ) : hasManifest ? (
             <Editor
               height="100%"
               defaultLanguage="yaml"
@@ -198,7 +249,7 @@ ${helmYaml}` : yaml;
             Cancel
           </button>
           <button
-            onClick={onApply}
+            onClick={apply}
             disabled={applying || !hasManifest}
             className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
@@ -207,6 +258,61 @@ ${helmYaml}` : yaml;
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const ACTION_STYLE: Record<Change["action"], string> = {
+  create: "bg-green-900/40 text-green-300",
+  update: "bg-amber-900/40 text-amber-300",
+  unchanged: "bg-neutral-800 text-gray-400",
+  error: "bg-red-900/40 text-red-300",
+};
+
+/** What Apply would do to the live cluster, as `kubectl diff` would show it. */
+function ChangeList({ changes }: { changes: Change[] | string | null }) {
+  if (changes === null) {
+    return (
+      <div className="flex h-full items-center justify-center gap-2 text-sm text-gray-500">
+        <Loader2 className="h-4 w-4 animate-spin" /> Comparing with the cluster…
+      </div>
+    );
+  }
+  if (typeof changes === "string") {
+    return <p className="p-4 text-sm text-red-300">{changes}</p>;
+  }
+  return (
+    <div className="custom-scrollbar h-full space-y-3 overflow-y-auto p-4">
+      {changes.map(c => (
+        <div key={c.resource}>
+          <p className="flex items-center gap-2 text-xs">
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${ACTION_STYLE[c.action]}`}>
+              {c.action === "unchanged" ? "no change" : c.action}
+            </span>
+            <span className="font-mono text-gray-200">{c.resource}</span>
+            {c.action === "create" && <span className="text-gray-500">new — not in the cluster yet</span>}
+          </p>
+          {c.error && <p className="mt-1 text-[11px] text-red-300">{c.error}</p>}
+          {c.diff && (
+            <pre className="mt-1 overflow-x-auto rounded bg-neutral-950 p-2 font-mono text-[11px] leading-relaxed">
+              {c.diff.split("\n").map((line, i) => (
+                <div
+                  key={i}
+                  className={
+                    line.startsWith("+") && !line.startsWith("+++")
+                      ? "text-green-400"
+                      : line.startsWith("-") && !line.startsWith("---")
+                        ? "text-red-400"
+                        : "text-gray-500"
+                  }
+                >
+                  {line || " "}
+                </div>
+              ))}
+            </pre>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

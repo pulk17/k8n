@@ -58,6 +58,11 @@ export const templates: Template[] = [
           replicas: 3,
           image: "nginx:alpine",
           containerPort: 80,
+          // Requests are what the autoscaler measures against; without one it
+          // has no percentage to compute and never scales.
+          cpuRequest: "100m",
+          memoryLimit: "256Mi",
+          healthPath: "/",
         },
       },
       {
@@ -165,6 +170,9 @@ export const templates: Template[] = [
           containerPort: 8080,
           command: ["/http-echo"],
           args: ["-listen=:8080", "-text=backend-api running"],
+          cpuRequest: "100m",
+          memoryLimit: "128Mi",
+          healthPath: "/",
         },
       },
       {
@@ -469,6 +477,8 @@ export const templates: Template[] = [
           replicas: 3,
           image: "busybox:latest",
           containerPort: 8080,
+          cpuRequest: "50m",
+          memoryLimit: "64Mi",
           spec: "replicas: 3\ntemplate:\n  spec:\n    containers:\n    - name: worker\n      image: busybox:latest\n      command: [\"sh\", \"-c\", \"while true; do echo 'Processing job at' $(date); sleep 30; done\"]\n      env:\n      - name: REDIS_HOST\n        valueFrom:\n          configMapKeyRef:\n            name: job-config\n            key: REDIS_HOST",
         },
       },

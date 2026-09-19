@@ -100,6 +100,8 @@ export default function GraphChecks({
           <button
             onClick={() => setOpen(v => !v)}
             aria-expanded={open}
+            aria-label={`${warnings} ${warnings === 1 ? "issue" : "issues"}, ${infos} ${infos === 1 ? "tip" : "tips"} — ${open ? "hide" : "show"} them`}
+            title={`${warnings} to fix, ${infos} worth knowing`}
             className="flex items-center gap-1.5 rounded px-1 text-gray-300 transition-colors hover:text-gray-100"
           >
             {warnings > 0 && (

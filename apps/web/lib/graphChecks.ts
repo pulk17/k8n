@@ -92,6 +92,26 @@ export function checkGraph(nodes: Node<NodeData>[], edges: Edge[]): GraphIssue[]
       );
     }
 
+    // Long-running servers only: a Job that runs to completion needs neither.
+    if (["Deployment", "StatefulSet", "DaemonSet"].includes(kind) && str(node, "image")) {
+      if (!str(node, "memoryLimit") && !str(node, "cpuLimit")) {
+        add(
+          "info",
+          `${name} has no resource limits`,
+          "Without limits one misbehaving pod can take a whole node's memory and get its neighbours evicted; without requests the scheduler cannot tell whether a node has room for it. It is the most common reason a cluster that was fine becomes flaky.",
+          "Set a memory limit and a CPU request — for a small web app, 256Mi and 100m are a sane start."
+        );
+      }
+      if (str(node, "containerPort") && !str(node, "healthPath")) {
+        add(
+          "info",
+          `${name} has no health check`,
+          "Kubernetes counts the pod ready the moment the process starts, so traffic can arrive before the app is listening — and a hung app is never restarted.",
+          "Set a health check path, such as /healthz, that answers 200 once the app is up."
+        );
+      }
+    }
+
     if (kind === "Service") {
       const targets = neighbours(node.id, "out", "network");
       if (targets.length === 0) {

@@ -61,6 +61,15 @@ const RESOURCES: FieldSpec[] = [
   { key: "memoryLimit", label: "Memory Limit", type: "text", placeholder: "512Mi" },
 ];
 
+/** A long-running server's health check: readiness and liveness from one path. */
+const HEALTH: FieldSpec = {
+  key: "healthPath",
+  label: "Health check path",
+  type: "text",
+  placeholder: "/healthz",
+  hint: "An HTTP path on the container port that answers 200 when the app is up. Kubernetes sends traffic only once it passes (readiness) and restarts the container if it stops passing (liveness).",
+};
+
 const SERVICE_ACCOUNT_HINT: FieldSpec = {
   key: "serviceAccountName",
   label: "Service Account",
@@ -77,6 +86,7 @@ export const NODE_SCHEMA: Record<string, FieldSpec[]> = {
     COMMAND,
     ARGS,
     ...RESOURCES,
+    HEALTH,
     SERVICE_ACCOUNT_HINT,
   ],
 
@@ -93,10 +103,11 @@ export const NODE_SCHEMA: Record<string, FieldSpec[]> = {
     },
     COMMAND,
     ...RESOURCES,
+    HEALTH,
     SERVICE_ACCOUNT_HINT,
   ],
 
-  DaemonSet: [IMAGE, CONTAINER_PORT, COMMAND, ARGS, ...RESOURCES, SERVICE_ACCOUNT_HINT],
+  DaemonSet: [IMAGE, CONTAINER_PORT, COMMAND, ARGS, ...RESOURCES, HEALTH, SERVICE_ACCOUNT_HINT],
 
   Pod: [IMAGE, CONTAINER_PORT, COMMAND, ARGS, ...RESOURCES, SERVICE_ACCOUNT_HINT],
 

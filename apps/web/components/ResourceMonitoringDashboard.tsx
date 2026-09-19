@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { errorMessage, fetchResourceMetrics } from '../lib/api';
+import InstallAddon from "./InstallAddon";
 
 interface MetricsData {
   timestamp: number;
@@ -99,10 +100,7 @@ export default function ResourceMonitoringDashboard({ resourceName, resourceKind
               <li>No running pods for this resource</li>
             </ul>
             <div className="mt-2">
-              To install metrics-server:
-              <code className="block mt-1 p-2 bg-black/20 rounded font-mono text-xs">
-                kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-              </code>
+              <InstallAddon name="metrics-server" />
             </div>
           </div>
         </div>

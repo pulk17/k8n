@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { isNewer } from "../version";
+import { isClusterDown } from "../api";
+import { chartWarnings, imagesIn } from "../chartChecks";
+import { filterCommands } from "../../components/CommandPalette";
+
+describe("isNewer", () => {
+  it("compares numerically, not as text", () => {
+    expect(isNewer("v0.2.10", "v0.2.9")).toBe(true);
+    expect(isNewer("v0.2.9", "v0.2.10")).toBe(false);
+  });
+  it("handles a missing v and missing parts", () => {
+    expect(isNewer("1.0", "v0.9.9")).toBe(true);
+    expect(isNewer("v1.0.0", "1.0")).toBe(false);
+  });
+  it("is false for the same version", () => {
+    expect(isNewer("v0.3.0", "v0.3.0")).toBe(false);
+  });
+});
+
+describe("isClusterDown", () => {
+  it("recognises a stopped cluster however it is phrased", () => {
+    expect(isClusterDown('Kubernetes cluster unreachable: Get "https://127.0.0.1:51080/version"')).toBe(true);
+    expect(
+      isClusterDown("dial tcp 127.0.0.1:6443: connectex: No connection could be made because the target machine actively refused it.")
+    ).toBe(true);
+    expect(isClusterDown("dial tcp 10.0.0.1:443: connect: connection refused")).toBe(true);
+    expect(isClusterDown("dial tcp 10.0.0.1:443: i/o timeout")).toBe(true);
+  });
+  it("leaves ordinary API errors alone", () => {
+    expect(isClusterDown('deployments.apps "web" not found')).toBe(false);
+    expect(isClusterDown("Forbidden: cannot delete kube-system/coredns")).toBe(false);
+  });
+});
+
+describe("chart checks", () => {
+  it("finds images however they are written", () => {
+    const yaml = 'containers:\n  - image: nginx:1.27\n    name: a\n  - name: b\n    image: "docker.io/bitnami/redis:7"\n';
+    expect(imagesIn(yaml)).toEqual(["nginx:1.27", "docker.io/bitnami/redis:7"]);
+  });
+  it("warns about Bitnami images", () => {
+    expect(chartWarnings("image: bitnami/postgresql:16")).toHaveLength(1);
+  });
+  it("does not warn about the legacy mirror or anything else", () => {
+    expect(chartWarnings("image: bitnamilegacy/postgresql:16\nimage: grafana/grafana:11")).toEqual([]);
+  });
+});
+
+describe("filterCommands", () => {
+  const commands = [
+    { label: "Add Deployment", hint: "to the canvas", run: () => {} },
+    { label: "Add Service", hint: "to the canvas", run: () => {} },
+    { label: "Review & apply", hint: "compile, diff, dry-run, apply", run: () => {} },
+  ];
+  it("matches every word, anywhere in label or hint", () => {
+    expect(filterCommands(commands, "add dep").map(c => c.label)).toEqual(["Add Deployment"]);
+    expect(filterCommands(commands, "diff").map(c => c.label)).toEqual(["Review & apply"]);
+  });
+  it("shows everything for an empty query", () => {
+    expect(filterCommands(commands, "  ")).toHaveLength(3);
+  });
+  it("is case-insensitive", () => {
+    expect(filterCommands(commands, "SERVICE")).toHaveLength(1);
+  });
+});

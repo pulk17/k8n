@@ -15,6 +15,7 @@ import InspectorChart from "./InspectorChart";
 import InspectorLearn from "./InspectorLearn";
 import InspectorLive from "./InspectorLive";
 import StartupBar from "./StartupBar";
+import { IngressControllerCheck } from "./InstallAddon";
 
 /**
  * One dock on the right of the canvas, for whatever is selected.
@@ -155,6 +156,7 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
             {/* What is wrong with this resource, and why it matters. Sits above
                 the form because the fix is almost always one of the fields
                 directly below it. */}
+            {kind === "Ingress" && <IngressControllerCheck />}
             {issues.map((issue, i) => (
               <div
                 key={i}

@@ -644,6 +644,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       replicas: 2,
       image: "nginx:1.27-alpine",
       containerPort: 80,
+      // The first thing anyone copies should already be the right habit.
+      cpuRequest: "50m",
+      memoryLimit: "128Mi",
+      healthPath: "/",
     });
     const config = makeNode("starter-configmap", "ConfigMap", "nginx-config", ns, {
       configData: "LOG_LEVEL=info\nWORKERS=4",

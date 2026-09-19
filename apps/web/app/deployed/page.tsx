@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import {
   DiagnosisReport,
+  createNamespace,
+  deleteNamespace,
   deleteResource,
   finishDeletion,
   errorMessage,
@@ -38,6 +40,8 @@ import ApiConnectionError from "../../components/ApiConnectionError";
 import InspectPanel from "../../components/InspectPanel";
 import ResourceMonitoringDashboard from "../../components/ResourceMonitoringDashboard";
 import StartupBar from "../../components/StartupBar";
+import ResourceActions from "../../components/ResourceActions";
+import Tunnels from "../../components/Tunnels";
 
 const KIND_ICONS: Record<string, typeof Box> = {
   Deployment: Box,
@@ -113,6 +117,7 @@ export default function DeployedPage() {
   const [inspecting, setInspecting] = useState<K8sResource | null>(null);
   const [diagnosis, setDiagnosis] = useState<DiagnosisReport | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
+  const [newNamespace, setNewNamespace] = useState("");
 
   // Bumping this drops the stream and opens a new one.
   const [attempt, setAttempt] = useState(0);
@@ -266,6 +271,35 @@ export default function DeployedPage() {
     }
   };
 
+  const addNamespace = async () => {
+    const name = newNamespace.trim();
+    if (!name) return;
+    try {
+      await createNamespace(name);
+      notify(`Namespace ${name} created`, "success");
+      setNewNamespace("");
+    } catch (err) {
+      notifyError(errorMessage(err));
+    }
+  };
+
+  const removeNamespace = async () => {
+    const ok = await confirmAction({
+      title: `Delete namespace ${namespace}?`,
+      message: `Everything in "${namespace}" is deleted with it: ${visible.length} resource(s) on screen, and anything hidden. This cannot be undone.`,
+      confirmLabel: "Delete namespace",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await deleteNamespace(namespace);
+      notify(`Namespace ${namespace} is being deleted`, "info");
+      setNamespace("all");
+    } catch (err) {
+      notifyError(errorMessage(err));
+    }
+  };
+
   if (error?.includes("Cannot connect")) {
     return <ApiConnectionError error={error} onRetry={reconnect} />;
   }
@@ -332,6 +366,39 @@ export default function DeployedPage() {
               </option>
             ))}
           </select>
+
+          {namespace !== "all" && namespace !== "default" && !namespace.startsWith("kube-") && (
+            <button
+              onClick={removeNamespace}
+              className="text-sm text-red-600 hover:underline dark:text-red-400"
+              title="Delete this namespace and everything in it"
+            >
+              Delete namespace
+            </button>
+          )}
+
+          <form
+            className="flex items-center gap-1"
+            onSubmit={e => {
+              e.preventDefault();
+              addNamespace();
+            }}
+          >
+            <input
+              value={newNamespace}
+              onChange={e => setNewNamespace(e.target.value)}
+              placeholder="new-namespace"
+              aria-label="New namespace name"
+              className="w-36 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-100"
+            />
+            <button
+              type="submit"
+              disabled={!newNamespace.trim()}
+              className="rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
+            >
+              Create
+            </button>
+          </form>
 
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input
@@ -421,6 +488,8 @@ export default function DeployedPage() {
           </div>
         )}
 
+        <Tunnels />
+
         {!loading && !error && visible.length === 0 && (
           <div className="rounded-lg border border-gray-200 bg-white py-12 text-center dark:border-neutral-800 dark:bg-neutral-900">
             <Box className="mx-auto mb-3 h-12 w-12 text-gray-400" />
@@ -504,6 +573,19 @@ export default function DeployedPage() {
                                   </div>
                                 )}
                               </dl>
+                            )}
+
+                            {isOpen && !r.protected && (
+                              <ResourceActions
+                                r={r}
+                                jobs={
+                                  r.kind === "CronJob"
+                                    ? resources.filter(
+                                        j => j.kind === "Job" && j.namespace === r.namespace && j.ownerReferences?.includes(r.name)
+                                      )
+                                    : undefined
+                                }
+                              />
                             )}
 
                             {r.startup && <StartupBar startup={r.startup} />}

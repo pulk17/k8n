@@ -7,6 +7,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { DEPTHS, useLearningStore } from "../store/learningStore";
+import ClusterBadge from "./ClusterBadge";
 
 export type ApplyState = "idle" | "dry-running" | "applying" | "success" | "error";
 
@@ -101,6 +102,7 @@ export default function CanvasToolbar({
       <IconButton icon={RefreshCw} label="Refresh from cluster  (Ctrl+R)" onClick={onRefresh} />
 
       <div className="ml-auto flex items-center gap-2">
+        <ClusterBadge />
         {applyState === "success" && (
           <span className="flex items-center gap-1.5 text-xs font-medium text-green-400">
             <CheckCircle2 className="h-4 w-4" />

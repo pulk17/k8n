@@ -38,12 +38,13 @@ import {
   watchResources,
 } from "../../lib/api";
 import { isValidConnection, validTargetsFor } from "../../lib/connections";
-import { defaultsForKind } from "../../lib/nodeSchema";
+import { NODE_SCHEMA, defaultsForKind } from "../../lib/nodeSchema";
 import { makeNode, nodeId, NodeData } from "../../lib/graph";
 import { checkGraph, issuesByNode } from "../../lib/graphChecks";
 import { notify, notifyError } from "../../lib/dialog";
 import YamlPreview from "../../components/YamlPreview";
 import AIPanel from "../../components/AIPanel";
+import CommandPalette from "../../components/CommandPalette";
 
 const nodeTypes: NodeTypes = {
   k8sNode: K8sNode,
@@ -674,6 +675,19 @@ function CanvasPageContent() {
       />
       <DevModeIndicator />
       <AIPanel />
+      <CommandPalette
+        commands={[
+          { label: "Review & apply", hint: "compile, diff, dry-run, apply", run: handleReviewAndApply },
+          { label: "Save workflow", hint: "Ctrl+S", run: handleSave },
+          { label: "Refresh from cluster", hint: "Ctrl+R", run: handleRefreshWorkflow },
+          { label: "Open workflows", hint: "templates, import, export", run: () => setShowWorkflowManager(true) },
+          { label: "Start the guided tour", run: startTour },
+          { label: "Go to deployed resources", hint: "live view, logs, open in browser", run: () => { window.location.href = "/deployed/"; } },
+          { label: "Switch cluster", hint: "kubeconfig contexts", run: () => { window.location.href = "/connect/"; } },
+          { label: "Help", run: () => { window.location.href = "/help/"; } },
+          ...Object.keys(NODE_SCHEMA).map(kind => ({ label: `Add ${kind}`, hint: "to the canvas", run: () => addAtCentre(kind) })),
+        ]}
+      />
 
       {/* Keyed on the selection so a different resource gets a fresh panel —
           which is what resets the tab and reloads the live figures. */}

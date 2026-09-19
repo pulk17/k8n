@@ -28,6 +28,32 @@ interface Message {
  * user accepts, and nothing reaches the cluster without going through the normal
  * preview and apply flow.
  */
+const CHAT_KEY = "k8n_chat";
+const MAX_SAVED = 40;
+
+function loadChat(): Message[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveChat(messages: Message[]) {
+  try {
+    // A proposed patch is a moment, not history: reloaded, it would offer to
+    // apply a change against a canvas that has since moved on.
+    const kept = messages.slice(-MAX_SAVED).map(({ patch, patchState, ...m }) => {
+      void patch;
+      void patchState;
+      return m;
+    });
+    localStorage.setItem(CHAT_KEY, JSON.stringify(kept));
+  } catch {}
+}
+
 export default function AIPanel() {
   const [status, setStatus] = useState<AIStatus>({ enabled: false, model: "" });
   // Whether the answer has come back yet. Without this the setup form mounts
@@ -39,7 +65,9 @@ export default function AIPanel() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  // The conversation survives a reload. The panel starts closed, so reading it
+  // on the first render cannot disagree with the pre-rendered page.
+  const [messages, setMessages] = useState<Message[]>(loadChat);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -52,6 +80,10 @@ export default function AIPanel() {
       .then(setStatus)
       .finally(() => setStatusLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (!busy) saveChat(messages);
+  }, [messages, busy]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -276,6 +308,16 @@ export default function AIPanel() {
             </span>
           )}
         </div>
+        {messages.length > 0 && (
+          <button
+            onClick={() => setMessages([])}
+            disabled={busy}
+            className="ml-auto mr-1 rounded px-1.5 py-0.5 text-[10px] text-gray-400 hover:bg-neutral-800 hover:text-gray-200 disabled:opacity-50"
+            title="Start a new conversation"
+          >
+            New chat
+          </button>
+        )}
         <button
           onClick={() => setShowSetup(true)}
           className="p-1 text-gray-400 hover:text-gray-200 hover:bg-neutral-800 rounded"

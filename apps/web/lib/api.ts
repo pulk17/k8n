@@ -111,6 +111,13 @@ export const errorMessage = (err: unknown) => {
   return details && !err.message.includes(details) ? `${err.message}: ${details}` : err.message;
 };
 
+export const CLUSTER_DOWN =
+  "Kubernetes isn't answering. Start it (Docker Desktop → Settings → Kubernetes, or your own cluster) and try again.";
+
+/** Whether an error is the cluster being down rather than anything k8n did. */
+export const isClusterDown = (text: string) =>
+  /cluster unreachable|connection refused|actively refused|no route to host|dial tcp .* i\/o timeout/i.test(text);
+
 /** Only a genuine transport failure means the API is unreachable. */
 function isNetworkError(error: unknown): boolean {
   return (
@@ -189,6 +196,11 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
           details = text;
         }
       }
+      // A stopped cluster surfaces as a dial error from deep inside whichever
+      // call noticed first. Every screen gets the same plain sentence instead.
+      if (isClusterDown(`${message} ${formatErrorDetails(details)}`)) {
+        throw new ApiError(CLUSTER_DOWN, res.status);
+      }
       throw new ApiError(message, res.status, details);
     }
 
@@ -222,7 +234,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
  * page with nothing behind it looks exactly like a k8n that has stopped.
  */
 export const fetchHealth = () =>
-  request<{ status: string; kubernetes: string; database: string }>("/health", {
+  request<{ status: string; kubernetes: string; database: string; version?: string; context?: string }>("/health", {
     timeoutMs: 5000,
   });
 
@@ -508,4 +520,89 @@ export const deleteResource = (
       method: "DELETE",
       body: { kind, name, namespace },
     }
+  );
+
+// --- Day-to-day operations ------------------------------------------------------
+
+export interface Forward {
+  id: string;
+  namespace: string;
+  kind: string;
+  name: string;
+  pod: string;
+  remotePort: number;
+  localPort: number;
+  url: string;
+}
+
+export const fetchForwards = () =>
+  request<{ forwards: Forward[] }>("/api/portforward").then(r => r?.forwards ?? []);
+
+/** Opens a tunnel from localhost to a Service or Pod. */
+export const startForward = (kind: string, namespace: string, name: string, port?: number) =>
+  request<Forward>("/api/portforward", { method: "POST", body: { kind, namespace, name, port } });
+
+export const stopForward = (id: string) =>
+  request<{ message: string }>(`/api/portforward/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+export const revealSecret = (namespace: string, name: string) =>
+  request<{ data: Record<string, string> }>(
+    `/api/secret/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`
+  ).then(r => r?.data ?? {});
+
+export const workloadAction = (
+  action: "scale" | "restart" | "rollback",
+  kind: string,
+  namespace: string,
+  name: string,
+  replicas?: number
+) =>
+  request<{ message: string }>(`/api/workload/${action}`, {
+    method: "POST",
+    body: { kind, namespace, name, replicas },
+  });
+
+export const execInPod = (namespace: string, pod: string, command: string, container?: string) =>
+  request<{ output: string; exitError?: string }>("/api/exec", {
+    method: "POST",
+    body: { namespace, pod, container, command },
+    timeoutMs: 40000,
+  });
+
+export const createNamespace = (name: string) =>
+  request<{ message: string }>("/api/cluster/namespaces", { method: "POST", body: { name } });
+
+export const deleteNamespace = (name: string) =>
+  request<{ message: string }>(`/api/cluster/namespaces/${encodeURIComponent(name)}`, { method: "DELETE" });
+
+export interface Permission {
+  source: string;
+  verbs: string[];
+  resources: string[];
+  apiGroups?: string[];
+  namespace: string;
+}
+
+export const fetchPermissions = (namespace: string, name: string) =>
+  request<{ permissions: Permission[] }>(
+    `/api/rbac/serviceaccount/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`
+  ).then(r => r?.permissions ?? []);
+
+export const fetchIngressClasses = () =>
+  request<{ ingressClasses: string[] }>("/api/cluster/ingressclasses").then(r => r?.ingressClasses ?? []);
+
+export const checkMetricsServer = () =>
+  request<{ available: boolean }>("/api/metrics/check").then(r => Boolean(r?.available));
+
+export interface Change {
+  resource: string;
+  action: "create" | "update" | "unchanged" | "error";
+  diff?: string;
+  error?: string;
+}
+
+/** What applying would change, object by object, against the live cluster. */
+export const diffYaml = (yaml: string) =>
+  request<{ changes: Change[] }>("/api/graph/diff", { method: "POST", body: { yaml }, timeoutMs: 45000 }).then(
+    r => r?.changes ?? []
   );

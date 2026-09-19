@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Cpu, HardDrive } from "lucide-react";
 import { errorMessage, fetchPodMetrics, fetchResourceMetrics } from "../lib/api";
 import LogsAndEvents from "./LogsAndEvents";
+import InstallAddon from "./InstallAddon";
 
 // What the cluster is actually doing with this object right now: current usage
 // on top, logs and events underneath.
@@ -101,12 +102,19 @@ export default function InspectorLive({
             {usage.detail && <p className="mt-2 text-[10px] text-gray-500">{usage.detail}</p>}
           </>
         ) : (
-          <p className="text-[11px] leading-relaxed text-gray-500">
-            No usage figures.{" "}
-            {missingMetricsServer
-              ? "metrics-server is probably not installed in this cluster — HPAs and kubectl top need it too."
-              : error ?? "Waiting for the first sample."}
-          </p>
+          <>
+            <p className="text-[11px] leading-relaxed text-gray-500">
+              No usage figures.{" "}
+              {missingMetricsServer
+                ? "metrics-server is probably not installed in this cluster — HPAs and kubectl top need it too."
+                : error ?? "Waiting for the first sample."}
+            </p>
+            {missingMetricsServer && (
+              <div className="mt-2">
+                <InstallAddon name="metrics-server" />
+              </div>
+            )}
+          </>
         )}
       </div>
 
