@@ -1,0 +1,11 @@
+{
+  "name": "k8n-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "^24.43.1"
+  }
+}

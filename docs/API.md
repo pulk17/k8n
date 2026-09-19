@@ -49,6 +49,9 @@ hint, and the UI degrades instead of erroring.
 
 ### `GET /health`
 
+Also reports `version` (the release tag, `dev` for a local build) and
+`context` (the kubeconfig context in use).
+
 ```json
 {
   "status": "ok",
@@ -279,6 +282,39 @@ failing the whole batch:
 ```
 
 ---
+
+### `POST /api/graph/diff`
+
+Body `{yaml}`. What applying would change, object by object:
+`{changes: [{resource, action, diff?, error?}]}` where `action` is `create`,
+`update`, `unchanged` or `error`, and `diff` is a unified diff of the live
+object against the result of a server-side dry-run apply — so defaults filled
+in by the API server are not reported as changes. Status and bookkeeping
+(`managedFields`, `resourceVersion`, …) are left out of both sides.
+
+## Operations
+
+Everything here refuses protected resources (403) the way delete does, and
+answers 400 with a plain reason for a request that cannot work.
+
+| Method | Path | Does |
+|---|---|---|
+| `GET` | `/api/portforward` | Open tunnels: `{forwards: [{id, kind, namespace, name, pod, remotePort, localPort, url}]}` |
+| `POST` | `/api/portforward` | `{kind: "Service"\|"Pod", namespace, name, port?}` — opens `127.0.0.1:<port>` to a ready pod. A Service's named `targetPort` is resolved; the local port is the pod's own port when free |
+| `DELETE` | `/api/portforward/:id` | Closes one |
+| `GET` | `/api/secret/:namespace/:name` | `{data: {key: value}}`, decoded |
+| `POST` | `/api/workload/scale` | `{kind, namespace, name, replicas}` — Deployment or StatefulSet, 0–100 |
+| `POST` | `/api/workload/restart` | `{kind, namespace, name}` — `rollout restart` for Deployment, StatefulSet, DaemonSet |
+| `POST` | `/api/workload/rollback` | `{kind: "Deployment", namespace, name}` — `rollout undo` to the previous revision |
+| `POST` | `/api/exec` | `{namespace, pod, container?, command}` — runs once through `sh -c`, or as plain words in an image with no shell. `{output, exitError?}`, capped at 64 KB |
+| `GET` | `/api/rbac/serviceaccount/:namespace/:name` | `{permissions: [{source, verbs, resources, apiGroups, namespace}]}` from every binding naming it or its groups |
+| `POST` | `/api/cluster/namespaces` | `{name}` — must be a DNS-1123 label |
+| `DELETE` | `/api/cluster/namespaces/:name` | Deletes it and everything in it; `default` and `kube-*` refused |
+| `GET` | `/api/cluster/ingressclasses` | `{ingressClasses: [name]}` — empty means an Ingress will do nothing |
+
+Pods that are not ready yet carry `startup: {step, label, since}` in
+`/api/cluster/resources` and the watch stream (1 node, 2 image, 3 start,
+4 health check); a workload carries its least advanced pod's.
 
 ## Saved workflows
 

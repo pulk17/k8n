@@ -60,3 +60,7 @@ frontend.log
 
 # Frontend copied in for the single-binary build (apps/api/ui.go)
 apps/api/ui/
+
+# test coverage reports
+coverage/
+e2e/*.png

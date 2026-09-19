@@ -1,0 +1,66 @@
+name: CI
+
+# Every push and pull request: unit tests on both halves, then the real binary
+# against a real (throwaway, kind) cluster, driven by the browser suites in e2e/.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Web — lint, types, unit tests
+        working-directory: apps/web
+        run: |
+          npx eslint .
+          npx tsc --noEmit
+          npx vitest run --coverage
+
+      - name: API — vet and unit tests
+        working-directory: apps/api
+        run: |
+          go vet ./...
+          go test -cover ./...
+
+      - name: Build the single binary
+        run: |
+          (cd apps/web && K8N_EXPORT=1 npx next build)
+          rm -rf apps/api/ui && cp -r apps/web/out apps/api/ui
+          (cd apps/api && CGO_ENABLED=0 go build -tags embedui -trimpath -o ../../dist/k8n-linux-amd64 .)
+
+      - name: Start a cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: k8n-e2e
+
+      - name: Browser suites
+        working-directory: e2e
+        run: |
+          npm ci
+          node run.mjs
+
+      - name: Keep failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e/*.png
+          if-no-files-found: ignore

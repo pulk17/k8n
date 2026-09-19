@@ -17,7 +17,13 @@ them.
   exactly the permissions of the kubeconfig k8n loaded.
 - **The token is generated on first start**, saved in `~/.kube`'s neighbour
   `~/.k8n/token` (owner-readable), and printed as a link. Anyone holding it can
-  change your cluster — treat it like a password.
+  change your cluster — treat it like a password. It also reads Secret values
+  in plain text, runs commands inside pods, and opens tunnels to them on
+  `127.0.0.1` of the machine k8n runs on: everything your kubeconfig allows,
+  through one token.
+- **Cluster machinery is refused** by those operations as by delete: nothing in
+  a `kube-*` namespace, and nothing named like a control-plane component, can
+  be revealed, exec'd into, scaled, restarted or tunnelled to through k8n.
 - **Every `/api/*` and `/mcp*` route requires it.** The UI and `/health` do
   not: the page has to load in order to ask for a token, and container
   healthchecks have no way to know one.
@@ -66,8 +72,12 @@ k8n can act as an MCP server, so AI clients can drive it.
 
 - The assistant is off unless a key is configured. With no key, no request
   leaves your machine.
-- The key is held by the k8n process, in `~/.k8n/config.json` (owner-readable),
-  and is never sent to the browser — the UI is told only that one exists and
+- The key is kept in the operating system's credential store (Windows
+  Credential Manager, macOS Keychain, the Linux secret service), encrypted to
+  your login, filed under the path of k8n's config so a second instance cannot
+  read it. Where no store exists — a container, a headless server — it is in
+  `~/.k8n/config.json` (owner-readable) instead; the settings panel says which.
+  It is never sent to the browser — the UI is told only that one exists and
   what its first and last characters are. In the hosted-page setup this is what
   keeps the key on your machine rather than on someone's web server.
 - When you ask it something, your canvas, the resource statuses on it, and

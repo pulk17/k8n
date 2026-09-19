@@ -96,6 +96,33 @@ target port matching no container port, an autoscaler with no CPU requests, a
 name Kubernetes will reject — each with the reason it matters and the fix, not
 just a red mark.
 
+**It runs the cluster day to day, not just the first deploy.** Expand anything
+on the **Deployed** page:
+
+- **Open in browser** on a Service or Pod tunnels its port to `localhost`
+  (`kubectl port-forward`, from a button). This is how you reach an app in the
+  cluster: a container's port is on the cluster's private network, so
+  `containerPort: 3000` does not mean `localhost:3000` until something tunnels
+  it. Open tunnels are listed at the top of the page until you stop them.
+- **Reveal values** on a Secret, with copy buttons — the Grafana admin password
+  without a base64 one-liner.
+- **Scale**, **Restart** (`rollout restart`) and **Roll back** (`rollout undo`) on
+  Deployments and StatefulSets.
+- **Run** a command in a Pod's container and read what it prints.
+- **What can it do?** on a ServiceAccount: every permission, and the binding it
+  comes from.
+- Create and delete namespaces; watch a CronJob's recent runs.
+
+A pod that is still starting shows where it has got to — waiting for a node,
+downloading its image, starting, passing its health check — and for how long,
+so a slow image pull no longer looks the same as a stuck one.
+
+**It shows what Apply will change.** Review & apply has a **Changes** tab: a
+diff of each object against the live cluster, computed by a server-side dry run
+so defaults do not show up as changes. It asks again before touching a
+`kube-*` namespace or a context named like production, and the toolbar always
+shows which cluster you are on.
+
 **It keeps your work without a database.** Saved workflows are JSON files in
 `~/.k8n/workflows` — readable, copyable between machines, fine in git. Point
 `DATABASE_URL` at Postgres instead when several people share one k8n.
@@ -103,6 +130,10 @@ just a red mark.
 **It imports what is already running.** Point it at a cluster and the live
 resources arrive as a graph, wired by their real references, with statuses that
 update from a watch stream.
+
+**Cluster add-ons in one click.** Without metrics-server there are no CPU or
+memory figures, and without an ingress controller an Ingress does nothing at
+all. k8n notices both and offers to install them.
 
 **Helm, visually.** Search Artifact Hub as you type, drop a chart on the canvas,
 and read what it renders before installing — including a warning when the
@@ -113,9 +144,13 @@ real status once it is installed.
 **An assistant, if you want one.** Off until you give it a model. Choose one in
 the panel while k8n is running — OpenAI, Anthropic, Google, Mistral, DeepSeek,
 Z.AI, OpenRouter, or any OpenAI-compatible endpoint including something running
-on your own machine — test the connection, and the key is written to
-`~/.k8n/config.json` on the machine k8n runs on. It never comes back to the
-page; the UI only ever sees `sk-1a…9f`.
+on your own machine — test the connection, and the key goes to the operating system's credential
+store (Windows Credential Manager, macOS Keychain, the Linux secret service) on
+the machine k8n runs on — or `~/.k8n/config.json`, owner-only, where there is
+none. It never comes back to the page; the UI only ever sees `sk-1a…9f`. The
+assistant is built to be cheap on free-tier keys: one agent that asks for the
+cluster data it needs in one go, answers from what is on screen when it can,
+and waits out a rate limit instead of failing.
 
 It reads the cluster through read-only tools and proposes canvas changes that
 must compile before you ever see them. You accept or reject; applying still
@@ -134,6 +169,7 @@ run.
 | `Ctrl+R` | Refresh from cluster |
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Delete` | Remove the selected node |
+| `Ctrl+K` | Command palette — every action by name |
 | `?` | Every shortcut |
 
 Double-click a card to edit it in place; double-click its name to rename it.
@@ -182,6 +218,19 @@ binary serves no UI, which is what you want while the dev server is running.
 The dev server is a different origin from the API, so it has no token yet: open
 `http://localhost:3000/?t=<token>` once (the API prints the token), or paste it
 when the page asks. `K8N_NO_AUTH=true` skips this while developing.
+
+### Tests
+
+```bash
+cd apps/api && go test ./...          # compiler, operations (fake clientset), AI config
+cd apps/web && npm test               # graph checks, templates, helpers (Vitest)
+cd e2e && npm ci && node run.mjs      # every browser suite, against a real cluster
+```
+
+`e2e/run.mjs` starts its own k8n from `dist/` with a throwaway home directory,
+so its token, workflows and AI key never touch yours; it uses your kubeconfig
+and skips what needs a cluster when there is none. CI runs all three against a
+kind cluster on every push.
 
 ### Docker
 
