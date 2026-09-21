@@ -31,6 +31,12 @@ var protectedNames = []string{
 // driving it — including an AI agent — could delete control-plane components
 // that the UI refused to touch. Enforcing it server-side makes the rule real.
 func IsProtected(name, namespace string) bool {
+	// Helm keeps each release revision in a Secret of its own. They are not the
+	// user's objects: deleting one erases the history a rollback needs, and one
+	// per revision is noise beside the resources the release actually created.
+	if strings.HasPrefix(name, "sh.helm.release.v1.") {
+		return true
+	}
 	for _, ns := range protectedNamespaces {
 		if namespace == ns {
 			return true

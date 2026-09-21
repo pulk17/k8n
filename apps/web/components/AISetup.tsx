@@ -96,6 +96,7 @@ export default function AISetup({
         <select
           value={provider}
           onChange={e => pick(e.target.value)}
+          aria-label="Provider"
           className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-xs text-gray-100 focus:border-blue-500 focus:outline-none"
         >
           {providers.map(p => (

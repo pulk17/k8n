@@ -49,9 +49,19 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage();
 await page.setViewport({ width: 1600, height: 950 });
 
+// With no cluster, every cluster-reading endpoint answers an error and Chrome
+// logs "Failed to load resource" for each — the app working as intended, not a
+// page error. Real script errors still count.
+const BASE = process.env.K8N_BASE || "http://127.0.0.1:8090";
+const clusterUp = await fetch(`${BASE}/health`)
+  .then(r => r.json())
+  .then(h => h.kubernetes === "connected")
+  .catch(() => false);
+
 const pageErrors = [];
+const expected = text => !clusterUp && /Failed to load resource/.test(text);
 page.on("pageerror", e => pageErrors.push(String(e)));
-page.on("console", m => m.type() === "error" && pageErrors.push(m.text()));
+page.on("console", m => m.type() === "error" && !expected(m.text()) && pageErrors.push(m.text()));
 page.on("response", r => r.status() === 404 && pageErrors.push(`404 ${r.url()}`));
 
 await page.goto(`${URL}?t=${TOKEN}`, { waitUntil: "networkidle2", timeout: 60000 });

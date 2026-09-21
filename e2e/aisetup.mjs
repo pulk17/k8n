@@ -189,7 +189,7 @@ const hint = await page.evaluate(() => {
   return line?.textContent || "";
 });
 const provider = await page.evaluate(() => {
-  const select = document.querySelector("select");
+  const select = document.querySelector('select[aria-label="Provider"]');
   return { value: select?.value || "", options: select?.options.length || 0 };
 });
 check("reopened settings still show the provider", provider.value !== "" && provider.options >= 6, `${provider.value} of ${provider.options}`);
