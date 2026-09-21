@@ -15,6 +15,7 @@ import InspectorChart from "./InspectorChart";
 import InspectorLearn from "./InspectorLearn";
 import InspectorLive from "./InspectorLive";
 import StartupBar from "./StartupBar";
+import ChartValues from "./ChartValues";
 import { IngressControllerCheck } from "./InstallAddon";
 import { FORWARDABLE, OpenInBrowser } from "./ResourceActions";
 
@@ -47,6 +48,7 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
   const selectedNodeId = useCanvasStore(s => s.selectedNodeId);
   const updateNodeData = useCanvasStore(s => s.updateNodeData);
   const deleteNode = useCanvasStore(s => s.deleteNode);
+  const inspectNode = useCanvasStore(s => s.inspectNode);
   const offline = useCanvasStore(s => s.offline);
 
   const node = (nodes.find(n => n.id === selectedNodeId) ?? null) as Node<NodeData> | null;
@@ -57,7 +59,7 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
   // and the tab resets on its own; staying on "Live" while selecting a node
   // that has no live half would otherwise show an empty panel.
   const [tab, setTab] = useState<Tab>(() =>
-    node?.data?.kind === "HelmRelease" ? "chart" : "configure"
+    node?.data?.kind === "HelmRelease" && node.data.chart?.repositoryUrl ? "chart" : "configure"
   );
 
   useEffect(() => {
@@ -201,11 +203,21 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
             ))}
 
             {isFromChart && (
-              <p className="rounded border border-violet-900/40 bg-violet-950/30 px-2.5 py-2 text-[10px] leading-relaxed text-violet-300">
-                Rendered from a chart, so it is here to be read. Helm creates this object when the
-                release is installed, and k8n never applies it — change it through the release&apos;s
-                Custom Values instead.
-              </p>
+              <div className="rounded border border-violet-900/40 bg-violet-950/30 px-2.5 py-2 text-[10px] leading-relaxed text-violet-300">
+                <p>
+                  Rendered from a chart, so it is here to be read, not edited: Helm creates this object and
+                  would undo a change made to it directly. Change it through the release&apos;s settings —
+                  for a password or a user, search the settings for &ldquo;admin&rdquo;.
+                </p>
+                {typeof node.data.chartOf === "string" && nodes.some(n => n.id === node.data.chartOf) && (
+                  <button
+                    onClick={() => inspectNode(node.data.chartOf as string)}
+                    className="mt-1.5 rounded border border-violet-800 px-2 py-1 text-violet-200 hover:bg-violet-900/40"
+                  >
+                    Open the release&apos;s settings
+                  </button>
+                )}
+              </div>
             )}
 
             {isLive && (
@@ -215,6 +227,9 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
               </p>
             )}
 
+            {/* A chart's objects are read, not edited — the fields show what Helm
+                will create, and disabling them says so better than any banner. */}
+            <fieldset disabled={isFromChart} className="space-y-3 disabled:opacity-70">
             <FieldInput
               spec={{ key: "name", label: "Name", type: "text", placeholder: "my-app" }}
               value={name}
@@ -246,6 +261,7 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
 
             {fieldsFor(kind)
               .filter(f => !f.visibleWhen || f.visibleWhen(node.data))
+              .filter(f => !(kind === "HelmRelease" && f.key === "valuesYaml" && node.data.chart))
               .map(f => (
                 <FieldInput
                   key={f.key}
@@ -254,6 +270,20 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
                   onChange={v => setField(f.key, v)}
                 />
               ))}
+            </fieldset>
+
+            {kind === "HelmRelease" && node.data.chart && (
+              <ChartValues
+                data={node.data}
+                onChange={v => setField("valuesYaml", v)}
+                onRepository={url =>
+                  node.data.chart &&
+                  updateNodeData(node.id, {
+                    chart: { ...node.data.chart, repositoryUrl: url, repository: node.data.chart.repository || (URL.canParse(url) ? new URL(url).host : url) },
+                  })
+                }
+              />
+            )}
 
             <button
               onClick={() => {

@@ -7,6 +7,7 @@ import { chartWarnings, imagesIn } from "../lib/chartChecks";
 import { NodeData } from "../lib/graph";
 import { useCanvasStore } from "../store/canvasStore";
 import { notify, notifyError } from "../lib/dialog";
+import { memo } from "../lib/cache";
 
 /**
  * What a chart would actually install, fetched as soon as the node exists.
@@ -30,23 +31,25 @@ export default function InspectorChart({ node }: { node: { id: string; data: Nod
   const chartVersion = typeof node.data.chartVersion === "string" ? node.data.chartVersion : "";
   const valuesYaml = typeof node.data.valuesYaml === "string" ? node.data.valuesYaml : "";
 
-  // The request carries the values as they are now, but it is not re-sent on
-  // every keystroke in the values box — rendering a chart is a download. The
-  // Re-render button is how you ask for the current values.
+  // Rendering is a download, so it is remembered per chart, version and values:
+  // opening the tab again shows the last rendering instead of fetching it
+  // again. Changed values make a new key, so the tab never shows stale output;
+  // Re-render forces a fresh one.
   useEffect(() => {
-    if (!chart?.name) return;
+    if (!chart?.name || !chart.repositoryUrl) return;
     let cancelled = false;
 
-    setLoading(true);
-    setError("");
-    templateHelmChart({
+    const request = {
       releaseName: name,
       chart: chart.name,
       repoUrl: chart.repositoryUrl,
       version: chartVersion || undefined,
       namespace,
       valuesYaml,
-    })
+    };
+    setLoading(true);
+    setError("");
+    memo(`template:${JSON.stringify(request)}`, () => templateHelmChart(request), attempt > 0)
       .then(rendered => {
         if (cancelled) return;
         setYaml(rendered);
@@ -61,8 +64,7 @@ export default function InspectorChart({ node }: { node: { id: string; data: Nod
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart?.name, chart?.repositoryUrl, attempt]);
+  }, [chart?.name, chart?.repositoryUrl, name, namespace, chartVersion, valuesYaml, attempt]);
 
   const handleAddToCanvas = useCallback(async () => {
     setAdding(true);
@@ -81,6 +83,15 @@ export default function InspectorChart({ node }: { node: { id: string; data: Nod
     return (
       <p className="p-4 text-[11px] leading-relaxed text-gray-500">
         This release has no chart on it. Drag one in from the Helm Charts panel.
+      </p>
+    );
+  }
+
+  if (!chart.repositoryUrl) {
+    return (
+      <p className="p-4 text-[11px] leading-relaxed text-gray-500">
+        k8n needs to know which repository {chart.name} comes from before it can render it. Add the
+        repository URL on the Configure tab.
       </p>
     );
   }
@@ -124,8 +135,8 @@ export default function InspectorChart({ node }: { node: { id: string; data: Nod
             {error.length > 400 ? `${error.slice(0, 400)}…` : error}
           </p>
           <p className="mt-1 text-[10px] leading-relaxed text-gray-500">
-            Rendering downloads the chart and asks the cluster which API versions it supports, so
-            it needs both internet access and a connected cluster.
+            Rendering downloads the chart, so it needs internet access. With the cluster down it
+            renders against Helm&apos;s default API versions.
           </p>
         </div>
       )}
