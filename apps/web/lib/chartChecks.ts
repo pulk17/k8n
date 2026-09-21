@@ -55,3 +55,34 @@ export function chartWarnings(yaml: string): ChartWarning[] {
 
   return warnings;
 }
+
+/** One object in a rendered chart, with the YAML that describes it. */
+export interface RenderedObject {
+  kind: string;
+  name: string;
+  /** `templates/deployment.yaml`, when Helm said which template made it. */
+  source: string;
+  yaml: string;
+}
+
+/**
+ * The objects a chart renders, split back out of the one long manifest.
+ *
+ * `helm template` answers thousands of lines in document order, which is how a
+ * chart's author wrote it, not how anyone reads it. Split into the objects it
+ * creates, each can be looked at on its own.
+ */
+export function renderedObjects(rendered: string): RenderedObject[] {
+  return rendered
+    .split(/^---\s*$/m)
+    .map(doc => doc.trim())
+    .filter(Boolean)
+    .map(doc => ({
+      kind: doc.match(/^kind:\s*(\S+)/m)?.[1] ?? "Object",
+      // The first `name:` at the top of the object is its own; a container's is
+      // indented deeper and comes later.
+      name: doc.match(/^\s{2}name:\s*["']?([^"'\n]+)/m)?.[1]?.trim() ?? "",
+      source: doc.match(/^#\s*Source:\s*(\S+)/m)?.[1] ?? "",
+      yaml: doc,
+    }));
+}

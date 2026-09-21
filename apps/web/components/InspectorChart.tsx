@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Boxes, Loader2, RefreshCw } from "lucide-react";
 import { errorMessage, importManifest, templateHelmChart } from "../lib/api";
-import { chartWarnings, imagesIn } from "../lib/chartChecks";
+import { chartWarnings, imagesIn, renderedObjects } from "../lib/chartChecks";
 import { NodeData } from "../lib/graph";
 import { useCanvasStore } from "../store/canvasStore";
 import { notify, notifyError } from "../lib/dialog";
@@ -189,9 +189,36 @@ export default function InspectorChart({ node }: { node: { id: string; data: Nod
             installed.
           </p>
 
-          <pre className="custom-scrollbar max-h-[40vh] overflow-auto rounded border border-neutral-800 bg-neutral-950 p-2.5 font-mono text-[10px] leading-relaxed text-gray-400">
-            {yaml.trim()}
-          </pre>
+          {/* One row per object rather than the whole manifest as a wall: a
+              chart of any size is read by looking at the parts of it you care
+              about. The full text is still one click away. */}
+          <ul className="divide-y divide-neutral-800 overflow-hidden rounded border border-neutral-800">
+            {renderedObjects(yaml).map((object, i) => (
+              <li key={`${object.kind}/${object.name}/${i}`}>
+                <details>
+                  <summary className="flex cursor-pointer list-none items-baseline gap-1.5 px-2.5 py-1.5 hover:bg-neutral-800/60">
+                    <span className="text-[11px] text-gray-200">{object.kind}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-gray-400">{object.name}</span>
+                    {object.source && (
+                      <span className="flex-shrink-0 truncate font-mono text-[9px] text-gray-600">
+                        {object.source.split("/").pop()}
+                      </span>
+                    )}
+                  </summary>
+                  <pre className="custom-scrollbar max-h-[40vh] overflow-auto bg-neutral-950 p-2.5 font-mono text-[10px] leading-relaxed text-gray-400">
+                    {object.yaml}
+                  </pre>
+                </details>
+              </li>
+            ))}
+          </ul>
+
+          <details className="rounded border border-neutral-800 px-2.5 py-1.5">
+            <summary className="cursor-pointer text-[11px] text-gray-400">All of it as YAML</summary>
+            <pre className="custom-scrollbar mt-2 max-h-[40vh] overflow-auto rounded border border-neutral-800 bg-neutral-950 p-2.5 font-mono text-[10px] leading-relaxed text-gray-400">
+              {yaml.trim()}
+            </pre>
+          </details>
         </>
       )}
     </div>

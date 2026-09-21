@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isNewer } from "../version";
 import { isClusterDown } from "../api";
-import { chartWarnings, imagesIn } from "../chartChecks";
+import { chartWarnings, imagesIn, renderedObjects } from "../chartChecks";
 import { filterCommands } from "../../components/CommandPalette";
 
 describe("isNewer", () => {
@@ -61,5 +61,41 @@ describe("filterCommands", () => {
   });
   it("is case-insensitive", () => {
     expect(filterCommands(commands, "SERVICE")).toHaveLength(1);
+  });
+});
+
+describe("splitting a rendered chart", () => {
+  const rendered = `---
+# Source: grafana/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana
+  namespace: default
+---
+# Source: grafana/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+spec:
+  template:
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:12
+`;
+
+  it("gives one entry per object, with where it came from", () => {
+    const objects = renderedObjects(rendered);
+    expect(objects.map(o => `${o.kind}/${o.name}`)).toEqual(["ServiceAccount/grafana", "Deployment/grafana"]);
+    expect(objects[1].source).toBe("grafana/templates/deployment.yaml");
+    // The object's own name, not the container's.
+    expect(objects[1].yaml).toContain("image: grafana/grafana:12");
+  });
+
+  it("copes with a manifest that is only comments or empty", () => {
+    expect(renderedObjects("")).toEqual([]);
+    expect(renderedObjects("---\n---\n")).toEqual([]);
   });
 });
