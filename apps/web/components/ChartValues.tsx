@@ -4,7 +4,16 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Loader2, RotateCcw, Search } from "lucide-react";
 import { errorMessage, fetchChartValues } from "../lib/api";
 import { memo } from "../lib/cache";
-import { Section, allSections, parseCustom, sectionText, setSection, splitDefaults } from "../lib/chartValues";
+import {
+  Section,
+  allSections,
+  matches,
+  matchingLines,
+  parseCustom,
+  sectionText,
+  setSection,
+  splitDefaults,
+} from "../lib/chartValues";
 import { NodeData } from "../lib/graph";
 
 /**
@@ -57,11 +66,7 @@ export default function ChartValues({
 
   const sections = allSections(defaults ?? [], parsed);
   const needle = query.trim().toLowerCase();
-  const shown = sections.filter(
-    s =>
-      (!changedOnly || s.key in parsed) &&
-      (!needle || s.key.toLowerCase().includes(needle) || s.comment.toLowerCase().includes(needle))
-  );
+  const shown = sections.filter(s => (!changedOnly || s.key in parsed) && matches(s, needle));
   const changed = sections.filter(s => s.key in parsed).length;
 
   if (!chart?.name) return null;
@@ -124,6 +129,7 @@ export default function ChartValues({
               <SectionRow
                 key={section.key}
                 section={section}
+                inside={matchingLines(section, needle)}
                 text={sectionText(section, parsed)}
                 changed={section.key in parsed}
                 open={open === section.key}
@@ -161,6 +167,7 @@ export default function ChartValues({
 
 function SectionRow({
   section,
+  inside,
   text,
   changed,
   open,
@@ -168,6 +175,8 @@ function SectionRow({
   onCommit,
 }: {
   section: Section;
+  /** Lines within this setting that matched the search, if any. */
+  inside: string[];
   text: string;
   changed: boolean;
   open: boolean;
@@ -200,6 +209,11 @@ function SectionRow({
           {section.comment && (
             <span className="block truncate text-[10px] text-gray-500">{section.comment.replace(/^#+\s*/gm, "").split("\n")[0]}</span>
           )}
+          {inside.map(line => (
+            <span key={line} className="block truncate font-mono text-[10px] text-blue-300/70">
+              {line}
+            </span>
+          ))}
         </span>
       </button>
       {open && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allSections, parseCustom, sameValue, sectionText, setSection, splitDefaults } from "../chartValues";
+import { allSections, matches, matchingLines, parseCustom, sameValue, sectionText, setSection, splitDefaults } from "../chartValues";
 
 const DEFAULTS = `# Default values for grafana.
 # This is a YAML-formatted file.
@@ -97,5 +97,21 @@ describe("chart values", () => {
   it("compares values regardless of key order", () => {
     expect(sameValue({ a: 1, b: [1, { c: 2 }] }, { b: [1, { c: 2 }], a: 1 })).toBe(true);
     expect(sameValue({ a: 1 }, { a: "1" })).toBe(false);
+  });
+});
+
+describe("searching a chart's settings", () => {
+  const sections = splitDefaults(DEFAULTS);
+  const service = sections.find(s => s.key === "service")!;
+
+  it("finds a setting by a key nested inside it", () => {
+    expect(matches(service, "clusterip")).toBe(true);
+    expect(matchingLines(service, "type")).toEqual(["# The type of Service", "type: ClusterIP"]);
+  });
+
+  it("still matches the name and the comment, and nothing else", () => {
+    expect(matches(service, "service")).toBe(true);
+    expect(matches(service, "ingress")).toBe(false);
+    expect(matchingLines(service, "")).toEqual([]);
   });
 });

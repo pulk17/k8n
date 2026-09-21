@@ -142,6 +142,34 @@ export function setSection(custom: string, section: Section, text: string): Sect
   return { values: out === "{}" ? "" : out + "\n" };
 }
 
+/**
+ * The lines inside a setting that mention what you typed — the nested keys, in
+ * other words. Searching a chart for "storageClass" has to find it wherever the
+ * author put it, or the settings list is only useful to someone who already
+ * knows the chart's shape.
+ */
+export function matchingLines(section: Section, needle: string, limit = 3): string[] {
+  if (!needle) return [];
+  const lower = needle.toLowerCase();
+  return section.defaultText
+    .split("\n")
+    .slice(1) // the first line is the key itself, already shown
+    .filter(line => line.toLowerCase().includes(lower))
+    .map(line => line.trim())
+    .slice(0, limit);
+}
+
+/** Does this setting match the search box: its key, its comment or anything in it. */
+export function matches(section: Section, needle: string): boolean {
+  if (!needle) return true;
+  const lower = needle.toLowerCase();
+  return (
+    section.key.toLowerCase().includes(lower) ||
+    section.comment.toLowerCase().includes(lower) ||
+    section.defaultText.toLowerCase().includes(lower)
+  );
+}
+
 /** Sections to show: the chart's, plus any custom keys the chart does not declare. */
 export function allSections(defaults: Section[], custom: Record<string, unknown>): Section[] {
   const known = new Set(defaults.map(s => s.key));

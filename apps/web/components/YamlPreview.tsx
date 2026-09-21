@@ -39,10 +39,20 @@ export default function YamlPreview({
     fetchHealth().then(h => setContext(h?.context)).catch(() => {});
   }, []);
 
+  /**
+   * What applying would do — including what a release's chart renders, so
+   * changing a value and pressing Apply is no longer the one path to a cluster
+   * with nothing shown first.
+   *
+   * ponytail: this compares each rendered object with the cluster through a
+   * dry-run apply. Helm's own upgrade also removes objects the new values no
+   * longer render, and those do not show up here; `helm diff` as a plugin is
+   * the upgrade if that starts to matter.
+   */
   const showChanges = () => {
     setView("changes");
     if (changes === null) {
-      diffYaml(yaml)
+      diffYaml(helmYaml ? `${yaml}\n---\n${helmYaml}` : yaml)
         .then(setChanges)
         .catch(err => setChanges(errorMessage(err)));
     }
