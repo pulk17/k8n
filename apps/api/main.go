@@ -197,6 +197,17 @@ func main() {
 	r.Use(gin.Recovery(), requestLogger())
 	r.Use(cors.New(corsConfig()))
 
+	// Anything that is not a GET may have changed the cluster — an apply, a
+	// scale, a Helm upgrade. The open watch streams read often again straight
+	// away instead of waiting out the slow tick they settle into when nothing
+	// is happening.
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		if c.Request.Method != http.MethodGet && c.Writer.Status() < 400 {
+			handlers.TouchCluster()
+		}
+	})
+
 	// Pairing. Every /api and /mcp route needs the token; the UI and /health do
 	// not, because the page has to load in order to ask for the token, and the
 	// container healthcheck has no way to know it.

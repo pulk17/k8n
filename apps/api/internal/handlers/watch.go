@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -10,8 +11,30 @@ import (
 
 const (
 	watchInterval  = 3 * time.Second
+	watchIdleMax   = 15 * time.Second
 	watchKeepalive = 20 * time.Second
 )
+
+// TouchCluster says k8n itself just changed something, so every open stream
+// goes back to reading often without waiting for its next slow tick to notice.
+// Applying, deleting, scaling and Helm all call it.
+func TouchCluster() { clusterWrites.Add(1) }
+
+var clusterWrites atomic.Int64
+
+// nextInterval slows the loop down while nothing is happening and snaps back
+// the moment something does. A cluster nobody is touching was costing a full
+// read of every kind every 3 seconds, all day; watching a rollout still costs
+// exactly that, which is when it is worth it.
+func nextInterval(current time.Duration, changed bool) time.Duration {
+	if changed {
+		return watchInterval
+	}
+	if next := current * 2; next < watchIdleMax {
+		return next
+	}
+	return watchIdleMax
+}
 
 // watchEvent is one message on the stream. The first carries every resource;
 // after that only what changed, so an idle cluster sends nothing at all.
@@ -49,6 +72,8 @@ func WatchResources(clientGetter ClientGetter) gin.HandlerFunc {
 		// nothing in it produces no first event and the page waits forever for
 		// one.
 		first := true
+		interval := watchInterval
+		writes := clusterWrites.Load()
 
 		for {
 			// Re-read the client every tick: connecting to a different context
@@ -67,12 +92,19 @@ func WatchResources(clientGetter ClientGetter) gin.HandlerFunc {
 			case err != nil:
 				sseSend(c, watchEvent{Type: "error", Message: err.Error()})
 				lastWrite = time.Now()
+				interval = watchInterval
 			default:
-				if event, changed := diffResources(sent, resources); changed || first {
+				event, changed := diffResources(sent, resources)
+				if changed || first {
 					sseSend(c, event)
 					lastWrite = time.Now()
 					first = false
 				}
+				if now := clusterWrites.Load(); now != writes {
+					writes = now
+					changed = true
+				}
+				interval = nextInterval(interval, changed)
 			}
 
 			if time.Since(lastWrite) >= watchKeepalive {
@@ -83,7 +115,7 @@ func WatchResources(clientGetter ClientGetter) gin.HandlerFunc {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(watchInterval):
+			case <-time.After(interval):
 			}
 		}
 	}

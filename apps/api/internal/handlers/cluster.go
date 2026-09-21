@@ -197,6 +197,14 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	}
 }
 
+// fromWatchCache asks the API server for its own cached copy instead of a
+// quorum read from etcd (this is what `kubectl get --resource-version=0` does).
+// k8n re-reads every few seconds to keep a status view current, and a view a
+// moment behind is exactly as useful — while a quorum read of every kind, every
+// few seconds, is the most expensive thing k8n can do to a busy cluster. Writes
+// and diffs never come through here; they read live.
+var fromWatchCache = metav1.ListOptions{ResourceVersion: "0"}
+
 // CollectResources gathers every resource type concurrently. It is shared by the
 // REST handler and the MCP tool so both see exactly the same view of a cluster.
 // An empty namespace means all namespaces.
@@ -218,7 +226,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		pods, err := client.Clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+		pods, err := client.Clientset.CoreV1().Pods(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list Pods: %v\n", err)
 			return
@@ -367,7 +375,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		deps, err := client.Clientset.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
+		deps, err := client.Clientset.AppsV1().Deployments(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list Deployments: %v\n", err)
 			return
@@ -426,7 +434,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		rss, err := client.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, metav1.ListOptions{})
+		rss, err := client.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list ReplicaSets: %v\n", err)
 			return
@@ -454,7 +462,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		svcs, err := client.Clientset.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{})
+		svcs, err := client.Clientset.CoreV1().Services(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list Services: %v\n", err)
 			return
@@ -498,7 +506,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		cms, err := client.Clientset.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{})
+		cms, err := client.Clientset.CoreV1().ConfigMaps(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list ConfigMaps: %v\n", err)
 			return
@@ -533,7 +541,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		dss, err := client.Clientset.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
+		dss, err := client.Clientset.AppsV1().DaemonSets(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list DaemonSets: %v\n", err)
 			return
@@ -591,7 +599,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		stss, err := client.Clientset.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
+		stss, err := client.Clientset.AppsV1().StatefulSets(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list StatefulSets: %v\n", err)
 			return
@@ -648,7 +656,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		secrets, err := client.Clientset.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{})
+		secrets, err := client.Clientset.CoreV1().Secrets(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list Secrets: %v\n", err)
 			return
@@ -680,7 +688,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ingresses, err := client.Clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
+		ingresses, err := client.Clientset.NetworkingV1().Ingresses(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list Ingresses: %v\n", err)
 			return
@@ -737,7 +745,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		pvcs, err := client.Clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
+		pvcs, err := client.Clientset.CoreV1().PersistentVolumeClaims(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list PersistentVolumeClaims: %v\n", err)
 			return
@@ -773,7 +781,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		hpas, err := client.Clientset.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, metav1.ListOptions{})
+		hpas, err := client.Clientset.AutoscalingV2().HorizontalPodAutoscalers(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list HorizontalPodAutoscalers: %v\n", err)
 			return
@@ -807,7 +815,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		sas, err := client.Clientset.CoreV1().ServiceAccounts(namespace).List(ctx, metav1.ListOptions{})
+		sas, err := client.Clientset.CoreV1().ServiceAccounts(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list ServiceAccounts: %v\n", err)
 			return
@@ -832,7 +840,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		jobs, err := client.Clientset.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
+		jobs, err := client.Clientset.BatchV1().Jobs(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list Jobs: %v\n", err)
 			return
@@ -864,7 +872,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		cronJobs, err := client.Clientset.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{})
+		cronJobs, err := client.Clientset.BatchV1().CronJobs(namespace).List(ctx, fromWatchCache)
 		if err != nil {
 			fmt.Printf("[resources] failed to list CronJobs: %v\n", err)
 			return
@@ -923,7 +931,7 @@ func GetNamespaces(clientGetter func() *k8s.Client) gin.HandlerFunc {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 
-		list, err := client.Clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+		list, err := client.Clientset.CoreV1().Namespaces().List(ctx, fromWatchCache)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list namespaces", "details": err.Error()})
 			return

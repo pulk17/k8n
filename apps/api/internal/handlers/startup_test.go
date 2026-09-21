@@ -73,3 +73,18 @@ func TestStartupReachesTheDeployment(t *testing.T) {
 		t.Error("a Service with the same name picked up progress")
 	}
 }
+
+func TestTheWatchSlowsDownWhenNothingHappens(t *testing.T) {
+	// Quiet ticks double the wait, up to the cap; one change puts it straight
+	// back to reading often.
+	d := watchInterval
+	for i := 0; i < 10; i++ {
+		d = nextInterval(d, false)
+	}
+	if d != watchIdleMax {
+		t.Errorf("idle interval = %v, want %v", d, watchIdleMax)
+	}
+	if got := nextInterval(d, true); got != watchInterval {
+		t.Errorf("after a change = %v, want %v", got, watchInterval)
+	}
+}
