@@ -90,6 +90,8 @@ function CanvasPageContent() {
 
   const searchParams = useSearchParams();
   const graphIdToLoad = searchParams.get("id");
+  // /canvas?stack=grafana — "Open on canvas" from a stack on the Deployed page.
+  const stackToLoad = searchParams.get("stack");
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const draggingFrom = useRef<string | null>(null);
@@ -176,6 +178,11 @@ function CanvasPageContent() {
       loadGraph(graphIdToLoad);
       return;
     }
+    if (stackToLoad) {
+      sessionStorage.setItem("workflow_opened", "true");
+      hydrateGraph(stackToLoad);
+      return;
+    }
     useLearningStore.getState().load();
     if (!useLearningStore.getState().chosen) {
       setShowWelcome(true);
@@ -185,7 +192,7 @@ function CanvasPageContent() {
       sessionStorage.setItem("workflow_opened", "true");
       setShowWorkflowManager(true);
     }
-  }, [graphIdToLoad, loadGraph]);
+  }, [graphIdToLoad, stackToLoad, loadGraph, hydrateGraph]);
 
   /** Loads the demo application and walks through it. */
   const startTour = useCallback(() => {
@@ -212,7 +219,7 @@ function CanvasPageContent() {
     [reactFlowInstance]
   );
 
-  const handleLoadWorkflow = (type: "new" | "example" | "cluster" | "saved") => {
+  const handleLoadWorkflow = (type: "new" | "example" | "cluster" | "saved", stack?: string) => {
     setShowWorkflowManager(false);
 
     if (type === "new") {
@@ -220,7 +227,7 @@ function CanvasPageContent() {
     } else if (type === "example") {
       useCanvasStore.getState().createStarterWorkflow();
     } else if (type === "cluster") {
-      hydrateGraph();
+      hydrateGraph(stack);
     }
     // 'saved' is already loaded by WorkflowManager.
   };
@@ -410,7 +417,7 @@ function CanvasPageContent() {
     setErrors([]);
     setCompiling(true);
     try {
-      const result = await compileGraph(filteredNodes, filteredEdges);
+      const result = await compileGraph(filteredNodes, filteredEdges, graphName);
       setCompiled(result);
       setShowPreview(true);
       if (result.objects === 0 && !filteredNodes.some(n => n.data.kind === "HelmRelease")) {
@@ -421,7 +428,7 @@ function CanvasPageContent() {
     } finally {
       setCompiling(false);
     }
-  }, [filteredNodes, filteredEdges]);
+  }, [filteredNodes, filteredEdges, graphName]);
 
   // One entry point to the cluster. The preview is the only place Apply lives,
   // so there is no path that skips the review and the dry run.
@@ -601,7 +608,7 @@ function CanvasPageContent() {
     return (
       <ApiConnectionError
         error={error}
-        onRetry={hydrateGraph}
+        onRetry={() => hydrateGraph()}
         onExplore={() => {
           // The canvas, the checks and every explanation work with no engine at
           // all, so someone who arrived at a hosted page can still see what this
@@ -706,7 +713,7 @@ function CanvasPageContent() {
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <button
-              onClick={hydrateGraph}
+              onClick={() => hydrateGraph()}
               className="flex items-center gap-1 rounded bg-red-800 px-2 py-1 text-xs text-red-200 transition-colors hover:bg-red-700"
             >
               <RefreshCw className="h-3 w-3" />

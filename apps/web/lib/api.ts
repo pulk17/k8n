@@ -47,6 +47,9 @@ export interface K8sResource {
   podIP?: string;
   nodeName?: string;
   restartCount?: number;
+  /** What it belongs to: a Helm release, a k8n workflow, or a part-of label. */
+  stack?: string;
+  stackSource?: "helm" | "k8n" | "label";
   /** Where a pod that is not ready yet has got to; on a workload, its slowest pod. */
   startup?: Startup;
 
@@ -391,6 +394,10 @@ export interface HelmRelease {
   chartVersion: string;
   appVersion: string;
   description: string;
+  /** Where the chart came from, when k8n installed it. */
+  repoUrl?: string;
+  /** The values it is running with. */
+  valuesYaml?: string;
 }
 
 export const searchHelmCharts = (query: string) =>
@@ -412,6 +419,14 @@ export const templateHelmChart = (params: ChartRequest) =>
     body: params,
     timeoutMs: 120000,
   }).then(r => r?.yaml ?? "");
+
+/** A chart's own values.yaml — every setting it offers, with its comments. */
+export const fetchChartValues = (params: Omit<ChartRequest, "releaseName" | "namespace" | "valuesYaml">) =>
+  request<{ values: string }>("/api/helm/values", {
+    method: "POST",
+    body: { ...params, releaseName: "values", namespace: "default" },
+    timeoutMs: 120000,
+  }).then(r => r?.values ?? "");
 
 export const fetchHelmReleases = () =>
   request<HelmRelease[]>("/api/helm/releases").then(r => r ?? []);
@@ -476,10 +491,11 @@ export const fetchResourceMetrics = (namespace: string, kind: string, name: stri
   );
 
 /** Compiles the whole graph server-side so edges resolve into real references. */
-export const compileGraph = (nodes: unknown[], edges: unknown[]) =>
+/** `stack` (the workflow's name) labels everything compiled, so it can be found again. */
+export const compileGraph = (nodes: unknown[], edges: unknown[], stack?: string) =>
   request<CompileResult>("/api/graph/compile", {
     method: "POST",
-    body: { nodes, edges },
+    body: { nodes, edges, stack },
     timeoutMs: 30000,
   });
 

@@ -26,6 +26,9 @@ type GraphEdge struct {
 type Graph struct {
 	Nodes []GraphNode `json:"nodes"`
 	Edges []GraphEdge `json:"edges"`
+	// Stack is the workflow's name. Everything compiled from it is labelled
+	// with it, so the cluster can be read back as stacks, not a heap of objects.
+	Stack string `json:"stack,omitempty"`
 }
 
 // Kind returns the Kubernetes kind for a node, or "" when absent.

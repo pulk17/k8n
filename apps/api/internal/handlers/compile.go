@@ -105,6 +105,9 @@ func BuildManifests(g Graph) ([]string, []CompileNote, error) {
 		if obj == nil {
 			continue
 		}
+		if !n.IsFromCluster() {
+			labelStack(obj, g.Stack)
+		}
 
 		out, err := yaml.Marshal(obj)
 		if err != nil {

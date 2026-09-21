@@ -3,7 +3,7 @@ import {
   Node, Edge, Connection, addEdge, applyNodeChanges, applyEdgeChanges,
   NodeChange, EdgeChange,
 } from "reactflow";
-import { fetchResources, fetchNamespaces, errorMessage, ImportedGraph, K8sResource } from "../lib/api";
+import { fetchResources, fetchNamespaces, fetchHelmReleases, errorMessage, ImportedGraph, K8sResource } from "../lib/api";
 import { WorkflowSource, loadWorkflow, saveWorkflow } from "../lib/workflows";
 import { generateEdges } from "../lib/edges";
 import { layoutGraph } from "../lib/layout";
@@ -58,7 +58,8 @@ export interface CanvasState {
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
-  hydrateGraph: () => Promise<void>;
+  /** Imports what is running; with a stack, only that stack, named after it. */
+  hydrateGraph: (stack?: string) => Promise<void>;
   loadNamespaces: () => Promise<void>;
   setActiveNamespace: (ns: string) => void;
   setGraphName: (name: string) => void;
@@ -323,6 +324,18 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
     const nodes = get().nodes.map(node => {
       const origin = node.data?.origin ?? "canvas";
+
+      // A release is installed when anything in the cluster says it belongs to
+      // it; there is no HelmRelease object to look up.
+      if (node.data.kind === "HelmRelease") {
+        const installed = resources.some(
+          r => r.stackSource === "helm" && r.stack === node.data.name && r.namespace === (node.data.namespace || "default")
+        );
+        const status = installed ? "Installed" : node.data.chart ? "Ready to Install" : "Not Deployed";
+        if (node.data.status === status) return node;
+        moved = true;
+        return { ...node, data: { ...node.data, status } };
+      }
       const live =
         origin === "cluster"
           ? byUid.get(node.id)
@@ -470,12 +483,20 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }
   },
 
-  hydrateGraph: async () => {
+  hydrateGraph: async stack => {
     try {
       set({ loading: true, error: null });
       const { showPods, showSystemNamespaces } = get();
 
-      const resources = await fetchResources();
+      const all = await fetchResources();
+      const resources = stack ? all.filter(r => r.stack === stack) : all;
+
+      // A Helm stack comes back as its release — the thing you change — with
+      // the objects it created drawn read-only beside it, as a dropped chart's
+      // are. Editing those objects directly would be undone by the next upgrade.
+      const helmStack = Boolean(stack) && resources.some(r => r.stackSource === "helm");
+      const release = helmStack ? (await fetchHelmReleases()).find(x => x.name === stack) : undefined;
+      const releaseId = release ? `helm-release-${release.namespace}-${release.name}` : undefined;
 
       const visible = resources.filter((r: K8sResource) => {
         if (!showSystemNamespaces && SYSTEM_NAMESPACES.includes(r.namespace)) return false;
@@ -500,10 +521,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
           ...r,
           // Marks this as live cluster state: applying it sends only edited
           // fields, so k8n cannot clobber spec it never saw.
-          origin: "cluster",
+          origin: releaseId && r.stackSource === "helm" ? "helm" : "cluster",
+          ...(releaseId && r.stackSource === "helm" && { chartOf: releaseId }),
           color: RESOURCE_COLORS[r.kind] || DEFAULT_RESOURCE_COLOR,
         },
       }));
+
+      if (release && releaseId) {
+        nodes.unshift(
+          makeNode(releaseId, "HelmRelease", release.name, release.namespace, {
+            status: "Installed",
+            chart: {
+              name: release.chart,
+              description: release.description ?? "",
+              repository: release.repoUrl && URL.canParse(release.repoUrl) ? new URL(release.repoUrl).host : "",
+              repositoryUrl: release.repoUrl ?? "",
+            },
+            chartVersion: release.chartVersion,
+            valuesYaml: release.valuesYaml ?? "",
+          })
+        );
+      }
 
       set({
         nodes: layoutGraph(nodes, edges),
@@ -512,6 +550,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         dirty: false,
         history: [],
         historyIndex: -1,
+        // Named after the stack, so applying keeps it in the same stack.
+        ...(stack && { graphName: stack, graphId: null }),
       });
 
       get().loadNamespaces();

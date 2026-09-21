@@ -131,6 +131,20 @@ shows which cluster you are on.
 resources arrive as a graph, wired by their real references, with statuses that
 update from a watch stream.
 
+**It groups what is running into applications.** A cluster answers with pods,
+replica sets, services and secrets; k8n puts them back together into the thing
+you installed — a Helm release, or a canvas you applied, which k8n labels
+`app.kubernetes.io/part-of` as it goes. The Deployed page lists those stacks
+instead of a flat pile, each with how many of its workloads are ready, and
+**Modify on canvas** brings one stack back — only that stack — onto the canvas
+to change and apply again.
+
+**And it edits a release the way its author described it.** Open a Helm release
+and its settings are the chart's own `values.yaml`, cut into searchable
+settings with the author's comments and defaults, including the ones the chart
+leaves commented out. Change one and only what differs from the default is kept
+as the release's values; Apply turns that into a `helm upgrade`.
+
 **Cluster add-ons in one click.** Without metrics-server there are no CPU or
 memory figures, and without an ingress controller an Ingress does nothing at
 all. k8n notices both and offers to install them.

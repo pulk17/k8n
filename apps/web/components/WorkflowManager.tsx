@@ -12,6 +12,8 @@ import {
   FileType,
   FolderOpen,
   Globe,
+  Layers,
+  Package,
   GraduationCap,
   LineChart,
   LucideIcon,
@@ -23,7 +25,8 @@ import {
   X,
 } from "lucide-react";
 import { useCanvasStore } from "../store/canvasStore";
-import { compileGraph, errorMessage, importManifest } from "../lib/api";
+import { compileGraph, errorMessage, fetchResources, importManifest } from "../lib/api";
+import { STACK_SOURCE_LABEL, StackSummary, summarizeStacks } from "../lib/stacks";
 import { makeEdge, makeNode, nodeId } from "../lib/graph";
 import { dockerfileToGraph } from "../lib/dockerfile";
 import { TemplateIcon, templates, templateToGraph } from "../lib/templates";
@@ -87,6 +90,11 @@ export default function WorkflowManager({
   const [importing, setImporting] = useState(false);
 
   const { nodes, edges, graphName, graphId, activeNamespace, setGraph } = useCanvasStore();
+  // What is running, as stacks, so one app can be brought in on its own.
+  const [stacks, setStacks] = useState<StackSummary[]>([]);
+  useEffect(() => {
+    if (isOpen) fetchResources().then(r => setStacks(summarizeStacks(r))).catch(() => setStacks([]));
+  }, [isOpen]);
   const hasWork = nodes.length > 0;
 
   const refresh = useCallback(async () => {
@@ -163,7 +171,7 @@ export default function WorkflowManager({
 
   const exportYaml = async () => {
     try {
-      const { yaml } = await compileGraph(nodes, edges);
+      const { yaml } = await compileGraph(nodes, edges, graphName);
       if (!yaml) {
         notify("Nothing on the canvas compiles to a manifest yet");
         return;
@@ -406,6 +414,26 @@ export default function WorkflowManager({
                   <SmallAction key={key} {...action} />
                 ))}
               </div>
+
+              {stacks.length > 0 && (
+                <>
+                  <p className="mb-2 mt-5 text-[11px] font-medium text-gray-500">
+                    One running stack — to change it, then apply
+                  </p>
+                  <div className="divide-y divide-neutral-800 overflow-hidden rounded-md border border-neutral-800">
+                    {stacks.map(stack => (
+                      <Row
+                        key={stack.name}
+                        icon={stack.source === "helm" ? Package : Layers}
+                        title={stack.name}
+                        description={`${STACK_SOURCE_LABEL[stack.source]} · ${stack.workloads.slice(0, 2).join(", ") || "no workloads"} · ${stack.namespaces.join(", ")}`}
+                        meta={`${stack.count} resources`}
+                        onClick={() => replaceCanvas(() => onLoadWorkflow("cluster", stack.name))}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </Section>
           </div>
 

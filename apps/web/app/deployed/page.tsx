@@ -42,6 +42,7 @@ import ResourceMonitoringDashboard from "../../components/ResourceMonitoringDash
 import StartupBar from "../../components/StartupBar";
 import ResourceActions from "../../components/ResourceActions";
 import Tunnels from "../../components/Tunnels";
+import { STACK_SOURCE_LABEL } from "../../lib/stacks";
 
 const KIND_ICONS: Record<string, typeof Box> = {
   Deployment: Box,
@@ -105,6 +106,72 @@ const MESSAGE_STYLES = {
   info: "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/30 text-blue-600 dark:text-blue-400",
 };
 
+function groupByKind(list: K8sResource[]): Record<string, K8sResource[]> {
+  return list.reduce<Record<string, K8sResource[]>>((acc, r) => {
+    (acc[r.kind] ||= []).push(r);
+    return acc;
+  }, {});
+}
+
+interface StackGroup {
+  name: string;
+  source?: K8sResource["stackSource"];
+  items: K8sResource[];
+}
+
+/** Resources by stack, largest first, with the ungrouped ones last. */
+function groupStacks(list: K8sResource[]): StackGroup[] {
+  const by = new Map<string, StackGroup>();
+  for (const r of list) {
+    const key = r.stack ?? "";
+    const g = by.get(key) ?? { name: key, source: r.stackSource, items: [] };
+    if (r.stackSource === "helm") g.source = "helm";
+    g.items.push(r);
+    by.set(key, g);
+  }
+  return [...by.values()].sort((a, b) =>
+    !a.name ? 1 : !b.name ? -1 : b.items.length - a.items.length || a.name.localeCompare(b.name)
+  );
+}
+
+/** One app: its name, where it came from, and a way to open it on the canvas. */
+function StackSection({ group, total, children }: { group: StackGroup; total: number; children: React.ReactNode }) {
+  // Everything open when there is little to show; big clusters start folded.
+  const [open, setOpen] = useState(total < 40);
+  const workloads = group.items.filter(r => ["Deployment", "StatefulSet", "DaemonSet", "CronJob"].includes(r.kind));
+  const ready = workloads.filter(r => ["Ready", "Running", "Active"].includes(r.status)).length;
+  return (
+    <section className="rounded-xl border border-gray-200 bg-gray-100/60 p-3 dark:border-neutral-800 dark:bg-neutral-900/40">
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={() => setOpen(o => !o)} className="flex min-w-0 items-center gap-2 text-left" aria-expanded={open}>
+          {open ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
+          <Layers className="h-5 w-5 text-blue-500" />
+          <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">{group.name || "Not in a stack"}</span>
+        </button>
+        {group.name && (
+          <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+            {group.source ? STACK_SOURCE_LABEL[group.source] : "Stack"}
+          </span>
+        )}
+        <span className="text-sm text-gray-500">
+          {group.items.length} resource{group.items.length === 1 ? "" : "s"}
+          {workloads.length > 0 && ` · ${ready}/${workloads.length} workloads ready`}
+        </span>
+        {group.name && (
+          <Link
+            href={`/canvas?stack=${encodeURIComponent(group.name)}`}
+            className="ml-auto rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-200 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
+            title={group.source === "helm" ? "Opens the release: change its values, then Review & apply upgrades it" : "Opens just this stack: change it, then Review & apply"}
+          >
+            {group.source === "helm" ? "Change values" : "Modify on canvas"}
+          </Link>
+        )}
+      </div>
+      {open && <div className="mt-3">{children}</div>}
+    </section>
+  );
+}
+
 export default function DeployedPage() {
   const [resources, setResources] = useState<K8sResource[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,6 +185,7 @@ export default function DeployedPage() {
   const [diagnosis, setDiagnosis] = useState<DiagnosisReport | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
   const [newNamespace, setNewNamespace] = useState("");
+  const [groupByStack, setGroupByStack] = useState(true);
 
   // Bumping this drops the stream and opens a new one.
   const [attempt, setAttempt] = useState(0);
@@ -152,10 +220,9 @@ export default function DeployedPage() {
   // looked broken.
   const deletable = visible.filter(r => !r.protected && r.status !== "Terminating");
 
-  const byKind = visible.reduce<Record<string, K8sResource[]>>((acc, r) => {
-    (acc[r.kind] ||= []).push(r);
-    return acc;
-  }, {});
+  // Stacks first — a Helm release, a k8n workflow — so the page reads as the
+  // apps that are running rather than one long list of their parts.
+  const stackGroups = groupStacks(visible);
 
   // Deterministic health checks. Runs over whichever namespaces are on screen,
   // so it still works with the dropdown left on "All Namespaces".
@@ -300,206 +367,9 @@ export default function DeployedPage() {
     }
   };
 
-  if (error?.includes("Cannot connect")) {
-    return <ApiConnectionError error={error} onRetry={reconnect} />;
-  }
-
-  return (
-    <div className="h-screen overflow-y-auto bg-gray-50 dark:bg-neutral-950">
-      <div className="mx-auto max-w-7xl p-8 pb-24">
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <Link
-              href="/canvas"
-              className="mb-2 inline-flex items-center gap-2 text-sm text-blue-600 hover:underline dark:text-blue-400"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Canvas
-            </Link>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Deployed Resources</h1>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Everything currently running in your cluster.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {error ? (
-              <button
-                onClick={reconnect}
-                className="flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Reconnect
-              </button>
-            ) : (
-              <span
-                className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
-                title="Updates arrive as the cluster changes"
-              >
-                <span className="h-2 w-2 rounded-full bg-green-500" />
-                Live
-              </span>
-            )}
-            <button
-              onClick={runDiagnosis}
-              disabled={diagnosing || resources.length === 0}
-              className="flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
-              title="Check for failing pods, stuck rollouts and unbound volumes"
-            >
-              <Stethoscope className={`h-4 w-4 ${diagnosing ? "animate-pulse" : ""}`} />
-              Diagnose
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-6 flex flex-wrap items-center gap-4">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Namespace:</label>
-          <select
-            value={namespace}
-            onChange={(e) => setNamespace(e.target.value)}
-            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-100"
-          >
-            <option value="all">All Namespaces</option>
-            {namespaces.map((ns) => (
-              <option key={ns} value={ns}>
-                {ns}
-              </option>
-            ))}
-          </select>
-
-          {namespace !== "all" && namespace !== "default" && !namespace.startsWith("kube-") && (
-            <button
-              onClick={removeNamespace}
-              className="text-sm text-red-600 hover:underline dark:text-red-400"
-              title="Delete this namespace and everything in it"
-            >
-              Delete namespace
-            </button>
-          )}
-
-          <form
-            className="flex items-center gap-1"
-            onSubmit={e => {
-              e.preventDefault();
-              addNamespace();
-            }}
-          >
-            <input
-              value={newNamespace}
-              onChange={e => setNewNamespace(e.target.value)}
-              placeholder="new-namespace"
-              aria-label="New namespace name"
-              className="w-36 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-100"
-            />
-            <button
-              type="submit"
-              disabled={!newNamespace.trim()}
-              className="rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
-            >
-              Create
-            </button>
-          </form>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input
-              type="checkbox"
-              checked={hideProtected}
-              onChange={(e) => setHideProtected(e.target.checked)}
-              className="h-4 w-4 accent-blue-600"
-            />
-            Hide system resources
-          </label>
-
-          <span className="text-sm text-gray-500 dark:text-gray-400">{visible.length} resources</span>
-
-          <details className="relative ml-auto">
-            <summary className="flex cursor-pointer list-none items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800">
-              <MoreHorizontal className="h-4 w-4" />
-              Bulk actions
-            </summary>
-            <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
-              <button
-                onClick={removeAll}
-                disabled={busy === "all" || deletable.length === 0}
-                className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/20"
-                title="Delete every non-system resource shown"
-              >
-                <Trash2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                <span>
-                  <span className="block font-medium">Delete all shown</span>
-                  <span className="block text-xs text-gray-500 dark:text-gray-400">
-                    {deletable.length} non-system {deletable.length === 1 ? "resource" : "resources"}
-                  </span>
-                </span>
-              </button>
-            </div>
-          </details>
-        </div>
-
-        {loading && (
-          <div className="py-12 text-center">
-            <RefreshCw className="mx-auto mb-2 h-8 w-8 animate-spin text-blue-500" />
-            <p className="text-gray-600 dark:text-gray-400">Loading resources...</p>
-          </div>
-        )}
-
-        {error && !loading && (
-          <div className="mb-6 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
-            {error}
-          </div>
-        )}
-
-        {diagnosis && (
-          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                Diagnosis — {diagnosis.namespace}
-              </h2>
-              <button
-                onClick={() => setDiagnosis(null)}
-                className="text-xs text-gray-500 hover:underline"
-              >
-                Dismiss
-              </button>
-            </div>
-
-            {diagnosis.findings.length === 0 ? (
-              <p className="text-sm text-green-600 dark:text-green-400">
-                Nothing wrong across {diagnosis.checked} workload(s).
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {diagnosis.findings.map((f, i) => (
-                  <div
-                    key={`${f.kind}-${f.name}-${f.reason}-${i}`}
-                    className={`rounded border p-3 text-xs ${
-                      MESSAGE_STYLES[f.severity === "critical" ? "error" : f.severity === "warning" ? "warning" : "info"]
-                    }`}
-                  >
-                    <div className="font-semibold">
-                      {f.reason} — {f.kind}/{f.name}
-                    </div>
-                    <p className="mt-1 break-words opacity-90">{f.detail}</p>
-                    {f.hint && <p className="mt-1 italic opacity-75">{f.hint}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <Tunnels />
-
-        {!loading && !error && visible.length === 0 && (
-          <div className="rounded-lg border border-gray-200 bg-white py-12 text-center dark:border-neutral-800 dark:bg-neutral-900">
-            <Box className="mx-auto mb-3 h-12 w-12 text-gray-400" />
-            <p className="mb-2 text-gray-600 dark:text-gray-400">No resources found</p>
-            <p className="text-sm text-gray-500">Deploy something from the canvas to see it here.</p>
-          </div>
-        )}
-
-        <div className="space-y-6">
-          {Object.entries(byKind).map(([kind, items]) => {
+  /** The per-kind cards for a list of resources. */
+  const renderKinds = (list: K8sResource[]) =>
+    Object.entries(groupByKind(list)).map(([kind, items]) => {
             const Icon = KIND_ICONS[kind] || Box;
             const color = RESOURCE_COLORS[kind] || DEFAULT_RESOURCE_COLOR;
 
@@ -657,7 +527,226 @@ export default function DeployedPage() {
                 </div>
               </div>
             );
-          })}
+          });
+
+  if (error?.includes("Cannot connect")) {
+    return <ApiConnectionError error={error} onRetry={reconnect} />;
+  }
+
+  return (
+    <div className="h-screen overflow-y-auto bg-gray-50 dark:bg-neutral-950">
+      <div className="mx-auto max-w-7xl p-8 pb-24">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <Link
+              href="/canvas"
+              className="mb-2 inline-flex items-center gap-2 text-sm text-blue-600 hover:underline dark:text-blue-400"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Canvas
+            </Link>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Deployed Resources</h1>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              Everything currently running in your cluster.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {error ? (
+              <button
+                onClick={reconnect}
+                className="flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reconnect
+              </button>
+            ) : (
+              <span
+                className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400"
+                title="Updates arrive as the cluster changes"
+              >
+                <span className="h-2 w-2 rounded-full bg-green-500" />
+                Live
+              </span>
+            )}
+            <button
+              onClick={runDiagnosis}
+              disabled={diagnosing || resources.length === 0}
+              className="flex items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
+              title="Check for failing pods, stuck rollouts and unbound volumes"
+            >
+              <Stethoscope className={`h-4 w-4 ${diagnosing ? "animate-pulse" : ""}`} />
+              Diagnose
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-6 flex flex-wrap items-center gap-4">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Namespace:</label>
+          <select
+            value={namespace}
+            onChange={(e) => setNamespace(e.target.value)}
+            className="rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-100"
+          >
+            <option value="all">All Namespaces</option>
+            {namespaces.map((ns) => (
+              <option key={ns} value={ns}>
+                {ns}
+              </option>
+            ))}
+          </select>
+
+          {namespace !== "all" && namespace !== "default" && !namespace.startsWith("kube-") && (
+            <button
+              onClick={removeNamespace}
+              className="text-sm text-red-600 hover:underline dark:text-red-400"
+              title="Delete this namespace and everything in it"
+            >
+              Delete namespace
+            </button>
+          )}
+
+          <form
+            className="flex items-center gap-1"
+            onSubmit={e => {
+              e.preventDefault();
+              addNamespace();
+            }}
+          >
+            <input
+              value={newNamespace}
+              onChange={e => setNewNamespace(e.target.value)}
+              placeholder="new-namespace"
+              aria-label="New namespace name"
+              className="w-36 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-gray-100"
+            />
+            <button
+              type="submit"
+              disabled={!newNamespace.trim()}
+              className="rounded border border-gray-300 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800"
+            >
+              Create
+            </button>
+          </form>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={hideProtected}
+              onChange={(e) => setHideProtected(e.target.checked)}
+              className="h-4 w-4 accent-blue-600"
+            />
+            Hide system resources
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={groupByStack}
+              onChange={e => setGroupByStack(e.target.checked)}
+              className="h-4 w-4 accent-blue-600"
+            />
+            Group by stack
+          </label>
+
+          <span className="text-sm text-gray-500 dark:text-gray-400">{visible.length} resources</span>
+
+          <details className="relative ml-auto">
+            <summary className="flex cursor-pointer list-none items-center gap-2 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800">
+              <MoreHorizontal className="h-4 w-4" />
+              Bulk actions
+            </summary>
+            <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded border border-gray-200 bg-white p-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+              <button
+                onClick={removeAll}
+                disabled={busy === "all" || deletable.length === 0}
+                className="flex w-full items-start gap-2 rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/20"
+                title="Delete every non-system resource shown"
+              >
+                <Trash2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>
+                  <span className="block font-medium">Delete all shown</span>
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    {deletable.length} non-system {deletable.length === 1 ? "resource" : "resources"}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </details>
+        </div>
+
+        {loading && (
+          <div className="py-12 text-center">
+            <RefreshCw className="mx-auto mb-2 h-8 w-8 animate-spin text-blue-500" />
+            <p className="text-gray-600 dark:text-gray-400">Loading resources...</p>
+          </div>
+        )}
+
+        {error && !loading && (
+          <div className="mb-6 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
+            {error}
+          </div>
+        )}
+
+        {diagnosis && (
+          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Diagnosis — {diagnosis.namespace}
+              </h2>
+              <button
+                onClick={() => setDiagnosis(null)}
+                className="text-xs text-gray-500 hover:underline"
+              >
+                Dismiss
+              </button>
+            </div>
+
+            {diagnosis.findings.length === 0 ? (
+              <p className="text-sm text-green-600 dark:text-green-400">
+                Nothing wrong across {diagnosis.checked} workload(s).
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {diagnosis.findings.map((f, i) => (
+                  <div
+                    key={`${f.kind}-${f.name}-${f.reason}-${i}`}
+                    className={`rounded border p-3 text-xs ${
+                      MESSAGE_STYLES[f.severity === "critical" ? "error" : f.severity === "warning" ? "warning" : "info"]
+                    }`}
+                  >
+                    <div className="font-semibold">
+                      {f.reason} — {f.kind}/{f.name}
+                    </div>
+                    <p className="mt-1 break-words opacity-90">{f.detail}</p>
+                    {f.hint && <p className="mt-1 italic opacity-75">{f.hint}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <Tunnels />
+
+        {!loading && !error && visible.length === 0 && (
+          <div className="rounded-lg border border-gray-200 bg-white py-12 text-center dark:border-neutral-800 dark:bg-neutral-900">
+            <Box className="mx-auto mb-3 h-12 w-12 text-gray-400" />
+            <p className="mb-2 text-gray-600 dark:text-gray-400">No resources found</p>
+            <p className="text-sm text-gray-500">Deploy something from the canvas to see it here.</p>
+          </div>
+        )}
+
+        <div className="space-y-6">
+          {groupByStack ? (
+            stackGroups.map(group => (
+              <StackSection key={group.name || "~none"} group={group} total={visible.length}>
+                <div className="space-y-4">{renderKinds(group.items)}</div>
+              </StackSection>
+            ))
+          ) : (
+            renderKinds(visible)
+          )}
         </div>
 
         {monitoring && (

@@ -31,6 +31,11 @@ type Resource struct {
 	// of this list; now it just reads the flag.
 	Protected bool `json:"protected"`
 
+	// Stack is what this belongs to: a Helm release, a k8n workflow, or an
+	// app.kubernetes.io/part-of or instance label. StackSource says which.
+	Stack       string `json:"stack,omitempty"`
+	StackSource string `json:"stackSource,omitempty"`
+
 	// Deployment/StatefulSet specific
 	Replicas      *int32 `json:"replicas,omitempty"`
 	ReadyReplicas int32  `json:"readyReplicas,omitempty"`
@@ -887,6 +892,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 		resources[i].Protected = IsProtected(resources[i].Name, resources[i].Namespace)
 	}
 	shareStartup(resources)
+	assignStacks(resources)
 
 	// The fetchers run concurrently, so without this the order changes between
 	// requests and the resource list reshuffles on every refresh.
