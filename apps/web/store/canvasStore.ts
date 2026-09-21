@@ -499,6 +499,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       const releaseId = release ? `helm-release-${release.namespace}-${release.name}` : undefined;
 
       const visible = resources.filter((r: K8sResource) => {
+        // Helm keeps each revision in a Secret of its own: that is how the
+        // release is stored, not something the release created.
+        if (r.kind === "Secret" && r.name.startsWith("sh.helm.release.v1.")) return false;
         if (!showSystemNamespaces && SYSTEM_NAMESPACES.includes(r.namespace)) return false;
         if (PRIMARY_KINDS.has(r.kind)) return true;
         if (showPods && (r.kind === "Pod" || r.kind === "ReplicaSet")) return true;
