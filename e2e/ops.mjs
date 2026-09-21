@@ -168,6 +168,17 @@ check("and runs the old image again", await until("the old image", async () => (
 r = await api("POST", "/api/workload/restart", { kind: "Deployment", namespace: NS, name: "web" });
 check("a Deployment can be restarted", r.status === 200, r.data.message);
 
+// --- the record of all that -------------------------------------------------------
+r = await api("GET", "/api/history?limit=20");
+const history = r.data.changes ?? [];
+check("what k8n changed is written down", r.status === 200 && history.length > 0, `${history.length} entries`);
+check(
+  "the scale is in it, with what it did",
+  history.some(x => x.action === "scale" && (x.targets ?? []).some(t => t.includes("web")) && /2/.test(x.detail ?? "")),
+  JSON.stringify(history[0] ?? {})
+);
+check("so is the apply, with what it applied", history.some(x => x.action === "apply" && (x.targets ?? []).some(t => t.includes("Deployment"))));
+
 // --- a delete held by a finalizer ------------------------------------------------
 await api("POST", "/api/graph/apply", {
   yaml: `apiVersion: v1\nkind: ConfigMap\nmetadata: {name: held, namespace: ${NS}, finalizers: [k8n.test/hold]}\n`,
