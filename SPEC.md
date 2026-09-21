@@ -1,11 +1,15 @@
-# k8n — Engineering Spec
+# k8n — the plan this was built from (archive)
 
-Status: living document. Written 2026-08-08 after a full read of the codebase
-(`apps/api` ~3.0k LOC Go, `apps/web` ~6.4k LOC TypeScript).
+**Read this as history, not as the current state.** It was written on
+2026-08-08 after a full read of the codebase as it was then, and sections 1–7
+describe defects and gaps *of that day* — services whose selectors ignored
+their edges, edges that compiled to nothing, files like `mapper.go` that no
+longer exist. They were the work list, and they are done; section 8 onwards is
+what shipped, added as it shipped.
 
-This is not a wishlist. Sections 1–3 are defects that exist in `master` today,
-each verified by reading the code path end to end. Sections 4–6 are the MCP and
-agentic-AI layer. Section 7 is the delivery order.
+For how k8n works now: [README.md](README.md) for what it does and
+[docs/API.md](docs/API.md) for every endpoint and the shape of a graph. For
+what is left, the git log is more honest than any document.
 
 ---
 
