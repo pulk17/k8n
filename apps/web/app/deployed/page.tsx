@@ -42,6 +42,7 @@ import ResourceMonitoringDashboard from "../../components/ResourceMonitoringDash
 import StartupBar from "../../components/StartupBar";
 import ResourceActions from "../../components/ResourceActions";
 import Tunnels from "../../components/Tunnels";
+import RecentChanges from "../../components/RecentChanges";
 import { STACK_SOURCE_LABEL } from "../../lib/stacks";
 
 const KIND_ICONS: Record<string, typeof Box> = {
@@ -674,6 +675,8 @@ export default function DeployedPage() {
             </div>
           </details>
         </div>
+
+        <RecentChanges />
 
         {loading && (
           <div className="py-12 text-center">

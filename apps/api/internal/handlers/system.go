@@ -165,6 +165,7 @@ func DeleteResourceHandler(getClient ClientGetter) gin.HandlerFunc {
 			return
 		}
 
+		Record(client, "delete", []string{req.Kind + "/" + req.Namespace + "/" + req.Name}, "")
 		c.JSON(http.StatusOK, gin.H{"message": "Resource deleted"})
 	}
 }

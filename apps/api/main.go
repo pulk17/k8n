@@ -286,6 +286,7 @@ func main() {
 	r.POST("/api/graph/import", handlers.ImportManifest())
 	r.POST("/api/graph/apply", handlers.ApplyResources(getK8sClient)) // ?dryRun=true
 	r.POST("/api/graph/diff", handlers.DiffHandler(getK8sClient))
+	r.GET("/api/history", handlers.HistoryHandler())
 
 	// Saved workflows
 	r.POST("/api/graph/save", handlers.SaveGraph())

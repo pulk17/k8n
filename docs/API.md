@@ -444,6 +444,19 @@ cluster. This is what puts a Helm node in the manifest preview: a chart used to
 be installed straight from the canvas with no dry run and no way to see what it
 would create.
 
+### `GET /api/history?limit=50`
+
+```json
+{ "changes": [{ "at": "2026-09-21T11:04:02Z", "cluster": "docker-desktop", "action": "scale",
+                "targets": ["Deployment/default/web"], "detail": "Scaled to 3" }] }
+```
+
+Every change k8n has made from this machine, newest first — applies, deletes,
+scales, restarts, rollbacks and Helm installs and upgrades. It is one JSON line
+per change in `~/.k8n/history.jsonl`, written after the cluster accepts the
+change, and trimmed to its recent half when it passes 512 KB. The cluster
+records the result of a change; this records that it was you.
+
 ### `POST /api/helm/values`
 
 ```json

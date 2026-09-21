@@ -241,6 +241,18 @@ export const fetchHealth = () =>
     timeoutMs: 5000,
   });
 
+/** What k8n has changed on this machine, newest first. */
+export interface ChangeEntry {
+  at: string;
+  cluster?: string;
+  action: string;
+  targets?: string[];
+  detail?: string;
+}
+
+export const fetchHistory = (limit = 50) =>
+  request<{ changes: ChangeEntry[] }>(`/api/history?limit=${limit}`).then(r => r?.changes ?? []);
+
 export const fetchResources = (namespace?: string) =>
   request<K8sResource[]>(
     `/api/cluster/resources${namespace && namespace !== "all" ? `?namespace=${encodeURIComponent(namespace)}` : ""}`

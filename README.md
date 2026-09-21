@@ -123,6 +123,12 @@ so defaults do not show up as changes. It asks again before touching a
 `kube-*` namespace or a context named like production, and the toolbar always
 shows which cluster you are on.
 
+**It remembers what it changed.** Applying, scaling, restarting, rolling back
+and upgrading a release each write a line to `~/.k8n/history.jsonl`, and
+**What k8n changed** on the Deployed page reads them back. A cluster records
+that a Deployment has three replicas, not that you scaled it from here twenty
+minutes ago.
+
 **It keeps your work without a database.** Saved workflows are JSON files in
 `~/.k8n/workflows` — readable, copyable between machines, fine in git. Point
 `DATABASE_URL` at Postgres instead when several people share one k8n.

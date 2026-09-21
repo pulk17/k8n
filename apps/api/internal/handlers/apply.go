@@ -79,6 +79,9 @@ func ApplyResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 			return
 		}
 
+		if !isDryRun {
+			Record(client, "apply", applied, "")
+		}
 		c.JSON(http.StatusOK, gin.H{"success": true, "applied": applied})
 	}
 }

@@ -423,6 +423,7 @@ func WorkloadActionHandler(getClient ClientGetter) gin.HandlerFunc {
 			opError(c, err)
 			return
 		}
+		Record(client, c.Param("action"), []string{req.Kind + "/" + req.Namespace + "/" + req.Name}, message)
 		c.JSON(http.StatusOK, gin.H{"message": message})
 	})
 }

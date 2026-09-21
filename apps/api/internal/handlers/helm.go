@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -148,6 +149,7 @@ func InstallHelmChart(getClient ClientGetter) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Install failed", "details": err.Error()})
 			return
 		}
+		Record(client, "helm install", []string{rel.Name}, fmt.Sprintf("%s, revision %d", rel.Chart.Metadata.Name, rel.Version))
 		c.JSON(http.StatusOK, releaseInfo(rel))
 	}
 }
@@ -170,6 +172,7 @@ func UpgradeHelmRelease(getClient ClientGetter) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Upgrade failed", "details": err.Error()})
 			return
 		}
+		Record(client, "helm upgrade", []string{rel.Name}, fmt.Sprintf("%s, revision %d", rel.Chart.Metadata.Name, rel.Version))
 		c.JSON(http.StatusOK, releaseInfo(rel))
 	}
 }
@@ -194,6 +197,7 @@ func RollbackHelmRelease(getClient ClientGetter) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Rollback failed", "details": err.Error()})
 			return
 		}
+		Record(client, "helm rollback", []string{c.Param("name")}, fmt.Sprintf("to revision %d", req.Revision))
 		c.JSON(http.StatusOK, gin.H{"message": "Rolled back", "revision": req.Revision})
 	}
 }
@@ -209,6 +213,7 @@ func UninstallHelmRelease(getClient ClientGetter) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Uninstall failed", "details": err.Error()})
 			return
 		}
+		Record(client, "helm uninstall", []string{c.Param("name")}, "")
 		c.JSON(http.StatusOK, gin.H{"message": "Uninstalled"})
 	}
 }
