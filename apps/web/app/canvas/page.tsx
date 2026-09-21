@@ -381,6 +381,32 @@ function CanvasPageContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphName, reactFlowInstance]);
 
+  /**
+   * The dock opens over the right of the canvas, which is where the card you
+   * just opened often is — you end up reading its settings with the card
+   * itself hidden behind them. Slide the canvas left by exactly the overlap,
+   * and only when there is one, so the rest of the time nothing moves.
+   */
+  useEffect(() => {
+    const flow = reactFlowInstance;
+    const area = visibleCanvas();
+    if (!inspectorOpen || !flow || !area || !selectedNodeId) return;
+    const node = flow.getNode(selectedNodeId);
+    if (!node) return;
+
+    const viewport = flow.getViewport();
+    // Move the whole graph clear when it fits, so the cards around the one you
+    // opened stay readable; when it does not fit, at least the card itself.
+    const graph = getRectOfNodes(flow.getNodes());
+    const fits = graph.width * viewport.zoom <= area.width;
+    const right = fits ? graph.x + graph.width : node.position.x + (node.width ?? 280);
+    const overlap = viewport.x + right * viewport.zoom - (area.left + area.width);
+    if (overlap > 0) {
+      flow.setViewport({ ...viewport, x: viewport.x - overlap - 24 }, { duration: 200 });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inspectorOpen, selectedNodeId, reactFlowInstance]);
+
   const handleSave = useCallback(async () => {
     try {
       const source = await saveGraph();
