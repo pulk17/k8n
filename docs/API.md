@@ -110,9 +110,19 @@ holds, which is what the canvas draws edges from:
   "configMapRefs": ["app-config"],
   "secretRefs": ["app-secrets"],
   "pvcRefs": ["app-data"],
-  "serviceAccountName": "app-sa"
+  "serviceAccountName": "app-sa",
+  "stack": "my-shop",
+  "stackSource": "label"
 }
 ```
+
+`stack` is the application a resource belongs to, and `stackSource` says how
+k8n knows: `helm` (a release owns it), `label` (`app.kubernetes.io/part-of`,
+which k8n writes when it applies a canvas), or `instance`
+(`app.kubernetes.io/instance`, the convention most charts follow). Pods and
+ReplicaSets inherit theirs from the workload that owns them, so a stack is the
+whole application rather than the objects someone happened to label. Resources
+with no stack are left out of both fields.
 
 Kind-specific fields are present only where they apply: `selector`, `ports`,
 `clusterIP` and `externalIP` on Services; `backends` and `hosts` on Ingresses;
@@ -434,9 +444,23 @@ cluster. This is what puts a Helm node in the manifest preview: a chart used to
 be installed straight from the canvas with no dry run and no way to see what it
 would create.
 
+### `POST /api/helm/values`
+
+```json
+{ "chart": "grafana", "repoUrl": "https://grafana.github.io/helm-charts", "version": "9.4.9" }
+```
+
+Answers the chart's own `values.yaml`, comments and all — the text behind the
+settings list in the inspector. Downloads the chart, so it needs the internet
+but not a cluster.
+
 ### `POST /api/helm/install`
 
-Same body. Creates the release, creating the namespace if needed.
+Same body as `template`. Creates the release, creating the namespace if needed —
+or upgrades it when a release of that name is already installed, because that is
+what a second Apply of the same canvas means. The chart's repository URL is
+written into the release description (`k8n repo: <url>`), since Helm itself does
+not record where a chart came from and an upgrade has to find it again.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

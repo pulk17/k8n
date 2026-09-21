@@ -10,6 +10,7 @@ import (
 	"github.com/user/k8s-graph-controller/backend/internal/helm"
 	"github.com/user/k8s-graph-controller/backend/internal/k8s"
 	"helm.sh/helm/v3/pkg/release"
+	"sigs.k8s.io/yaml"
 )
 
 // ChartSummary is one Artifact Hub search result.
@@ -110,6 +111,23 @@ func TemplateHelmChart(getClient ClientGetter) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"yaml": manifest})
+	}
+}
+
+// ChartValuesHandler returns a chart's own values.yaml — every setting it
+// offers, with the author's comments — for the release's values editor.
+func ChartValuesHandler() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		req, ok := bindChartRequest(c)
+		if !ok {
+			return
+		}
+		values, err := helm.DefaultValues(req.options())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Could not read the chart's values", "details": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"values": values})
 	}
 }
 
@@ -281,6 +299,14 @@ func releaseInfo(rel *release.Release) gin.H {
 		info["chart"] = rel.Chart.Metadata.Name
 		info["chartVersion"] = rel.Chart.Metadata.Version
 		info["appVersion"] = rel.Chart.Metadata.AppVersion
+	}
+	// What a canvas needs to take the release over: where the chart lives and
+	// the values it is running with.
+	info["repoUrl"] = helm.RepoOf(rel)
+	if len(rel.Config) > 0 {
+		if out, err := yaml.Marshal(rel.Config); err == nil {
+			info["valuesYaml"] = string(out)
+		}
 	}
 	return info
 }

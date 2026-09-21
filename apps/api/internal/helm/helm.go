@@ -210,11 +210,20 @@ func Install(client *k8s.Client, o Options) (*release.Release, error) {
 		return nil, err
 	}
 
+	// Applying a canvas whose chart is already installed is a change to that
+	// release, not a second install — `helm upgrade --install`. Without this,
+	// editing a running stack's values and applying failed with "cannot re-use
+	// a name that is still in use".
+	if _, err := action.NewGet(cfg).Run(o.Release); err == nil {
+		return Upgrade(client, o)
+	}
+
 	install := action.NewInstall(cfg)
 	install.ReleaseName = o.Release
 	install.Namespace = ns
 	install.CreateNamespace = true
 	install.ChartPathOptions = chartPathOptions(o)
+	install.Description = describe(o)
 
 	chart, err := locate(install, o)
 	if err != nil {
@@ -252,9 +261,22 @@ func Upgrade(client *k8s.Client, o Options) (*release.Release, error) {
 		return nil, err
 	}
 
+	// Helm keeps the chart's name but not where it came from; k8n writes the
+	// repository into the release description at install, and reads it back
+	// here so an upgrade from the Releases panel can find the chart again.
+	if prev, err := action.NewGet(cfg).Run(o.Release); err == nil {
+		if o.RepoURL == "" {
+			o.RepoURL = repoOf(prev.Info.Description)
+		}
+		if o.Chart == "" && prev.Chart != nil && prev.Chart.Metadata != nil {
+			o.Chart = prev.Chart.Metadata.Name
+		}
+	}
+
 	upgrade := action.NewUpgrade(cfg)
 	upgrade.Namespace = ns
 	upgrade.ChartPathOptions = chartPathOptions(o)
+	upgrade.Description = describe(o)
 
 	path, err := upgrade.ChartPathOptions.LocateChart(o.Chart, settings())
 	if err != nil {
@@ -268,7 +290,56 @@ func Upgrade(client *k8s.Client, o Options) (*release.Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	return upgrade.Run(o.Release, chart, values)
+	rel, err := upgrade.Run(o.Release, chart, values)
+	if err != nil && IsBrokenSchema(err) {
+		upgrade.SkipSchemaValidation = true // as for install
+		return upgrade.Run(o.Release, chart, values)
+	}
+	return rel, err
+}
+
+const repoMark = "k8n repo: "
+
+// describe is the release description k8n writes: where the chart came from.
+func describe(o Options) string {
+	if o.RepoURL == "" {
+		return ""
+	}
+	return repoMark + o.RepoURL
+}
+
+// repoOf reads the repository back out of a description k8n wrote.
+func repoOf(description string) string {
+	if strings.HasPrefix(description, repoMark) {
+		return strings.TrimSpace(strings.TrimPrefix(description, repoMark))
+	}
+	return ""
+}
+
+// RepoOf is the repository a release was installed from, when k8n installed it.
+func RepoOf(rel *release.Release) string {
+	if rel == nil || rel.Info == nil {
+		return ""
+	}
+	return repoOf(rel.Info.Description)
+}
+
+// DefaultValues returns a chart's own values.yaml, comments and all: the list
+// of everything the chart lets you change, in the author's words.
+func DefaultValues(o Options) (string, error) {
+	install := action.NewInstall(new(action.Configuration))
+	install.ChartPathOptions = chartPathOptions(o)
+	loaded, err := locate(install, o)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range loaded.Raw {
+		if f.Name == "values.yaml" {
+			return string(f.Data), nil
+		}
+	}
+	out, err := yaml.Marshal(loaded.Values)
+	return string(out), err
 }
 
 // Rollback returns a release to an earlier revision.

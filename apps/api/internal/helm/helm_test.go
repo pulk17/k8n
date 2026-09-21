@@ -14,3 +14,16 @@ func TestIsUnreachable(t *testing.T) {
 		t.Error("a chart bug is not the cluster being down")
 	}
 }
+
+func TestRepoRoundTrip(t *testing.T) {
+	o := Options{RepoURL: "https://grafana-community.github.io/helm-charts"}
+	if got := repoOf(describe(o)); got != o.RepoURL {
+		t.Errorf("repo came back as %q", got)
+	}
+	if repoOf("Install complete") != "" {
+		t.Error("a description k8n did not write has no repo in it")
+	}
+	if describe(Options{}) != "" {
+		t.Error("no repo should leave Helm's own description alone")
+	}
+}

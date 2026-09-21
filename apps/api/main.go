@@ -260,6 +260,7 @@ func main() {
 	// not against whatever the ambient kubeconfig points at.
 	r.GET("/api/helm/search", handlers.SearchHelmCharts())
 	r.POST("/api/helm/template", handlers.TemplateHelmChart(getK8sClient))
+	r.POST("/api/helm/values", handlers.ChartValuesHandler())
 	r.POST("/api/helm/install", handlers.InstallHelmChart(getK8sClient))
 	r.GET("/api/helm/releases", handlers.ListHelmReleases(getK8sClient))
 	r.GET("/api/helm/releases/:name", handlers.GetHelmRelease(getK8sClient))
