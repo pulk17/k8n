@@ -2,6 +2,7 @@
 
 import { ArrowLeft, Box, Globe, FileCode, Lock, Network, Zap, GitBranch } from "lucide-react";
 import Link from "next/link";
+import { SHORTCUTS } from "../../components/KeyboardShortcuts";
 import { CONNECTION_TYPES } from "../../lib/constants";
 
 /** What each connection means, in the order worth explaining first. */
@@ -42,7 +43,7 @@ export default function HelpPage() {
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">1</span>
               <div>
-                <strong>Connect to your cluster:</strong> Go to the connect page and select your kubectl context
+                <strong>Connect to your cluster:</strong> k8n uses your current kubeconfig context; the toolbar shows which one, and Connect switches it
               </div>
             </li>
             <li className="flex gap-3">
@@ -54,19 +55,19 @@ export default function HelpPage() {
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">3</span>
               <div>
-                <strong>Configure nodes:</strong> Click on a node header to expand and edit its properties
+                <strong>Configure a card:</strong> double-click it to edit in place, or open it in the inspector with the panel button on the card
               </div>
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">4</span>
               <div>
-                <strong>Connect resources:</strong> Drag from colored handles to create relationships
+                <strong>Wire them up:</strong> drag from a coloured socket to another card; each colour is one kind of reference
               </div>
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-bold">5</span>
               <div>
-                <strong>Deploy:</strong> Click &quot;Apply&quot; in the toolbar to deploy to your cluster
+                <strong>Deploy:</strong> Review &amp; apply shows the manifest and what it changes in the cluster, dry-runs it, then applies
               </div>
             </li>
           </ol>
@@ -76,7 +77,7 @@ export default function HelpPage() {
         <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
             <GitBranch className="w-5 h-5 inline mr-2" />
-            Connection Types (ComfyUI-Style)
+            What the wires mean
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
             k8n uses typed connections - you can only connect compatible resources. Hover over connection handles to see what they accept.
@@ -221,9 +222,9 @@ export default function HelpPage() {
               <ol className="list-decimal list-inside space-y-2 ml-2">
                 <li>Click the &quot;Helm Charts&quot; button in the bottom-left corner</li>
                 <li>Search for charts from Artifact Hub (e.g., &quot;nginx&quot;, &quot;redis&quot;, &quot;postgresql&quot;)</li>
-                <li>Drag a chart onto the canvas to add it as a node</li>
-                <li>Configure the chart&apos;s values in the node settings (optional)</li>
-                <li>Click &quot;Apply&quot; to install the chart to your cluster</li>
+                <li>Click a chart, or drag it onto the canvas, to add it as a release card</li>
+                <li>Open the card: Configure lists the chart&apos;s own settings, searchable, and Chart shows what it will create</li>
+                <li>Review &amp; apply installs it — or upgrades it, when the release already exists</li>
               </ol>
             </div>
 
@@ -263,25 +264,32 @@ export default function HelpPage() {
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-              <span className="text-gray-700 dark:text-gray-300">Save Graph</span>
-              <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+S</kbd>
-            </div>
-            
-            <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-              <span className="text-gray-700 dark:text-gray-300">Refresh from Cluster</span>
-              <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+R</kbd>
-            </div>
-            
-            <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-              <span className="text-gray-700 dark:text-gray-300">Delete Selected</span>
-              <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Delete</kbd>
-            </div>
-            
-            <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-              <span className="text-gray-700 dark:text-gray-300">Show Help</span>
-              <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">?</kbd>
-            </div>
+            {SHORTCUTS.map(([action, keys]) => (
+              <div key={action} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
+                <span className="text-gray-700 dark:text-gray-300">{action}</span>
+                <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">{keys}</kbd>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Reaching an app */}
+        <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Opening your app on localhost</h2>
+          <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+            <p>
+              A container&apos;s port is on the cluster&apos;s private network, so <code className="font-mono">containerPort: 3000</code>{" "}
+              does not mean <code className="font-mono">localhost:3000</code>. Something has to tunnel it.
+            </p>
+            <p>
+              <strong>Open in browser</strong> — on a Service, Pod or Deployment card, or its row on the Deployed page — does that
+              for you (it is <code className="font-mono">kubectl port-forward</code>). Open tunnels are listed on the Deployed page
+              until you stop them.
+            </p>
+            <p className="text-gray-500 dark:text-gray-400">
+              A NodePort Service does not help on Docker Desktop or kind: the nodes are containers, so their ports are not on
+              your machine either.
+            </p>
           </div>
         </section>
 
@@ -289,7 +297,7 @@ export default function HelpPage() {
         <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6">
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Verifying Deployments</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            After clicking &quot;Apply&quot;, use these kubectl commands to verify your resources:
+            After applying, the Deployed page shows everything live. These are the kubectl equivalents:
           </p>
           
           <div className="space-y-3">

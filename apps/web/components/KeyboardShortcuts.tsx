@@ -11,6 +11,21 @@ interface KeyboardShortcutsProps {
   onRedo?: () => void;
 }
 
+/** Every shortcut on the canvas, including the ones other components own. */
+export const SHORTCUTS: [string, string][] = [
+  ["Command palette — every action by name", "Ctrl+K"],
+  ["Search the resource palette", "/"],
+  ["Add the highlighted resource", "Enter"],
+  ["Save workflow", "Ctrl+S"],
+  ["Refresh from cluster", "Ctrl+R"],
+  ["Undo", "Ctrl+Z"],
+  ["Redo", "Ctrl+Y"],
+  ["Delete the selected card", "Delete"],
+  ["Edit a card in place", "Double-click"],
+  ["Close a panel or dialog", "Esc"],
+  ["This list", "?"],
+];
+
 /** True for anything that swallows a keystroke as text or a choice. */
 const isFormField = (target: EventTarget | null) =>
   target instanceof HTMLInputElement ||
@@ -22,13 +37,6 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo,
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Show/hide help with "?"
-      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        setShowHelp(!showHelp);
-        return;
-      }
-
       // Hide help on Escape
       if (e.key === 'Escape' && showHelp) {
         setShowHelp(false);
@@ -37,7 +45,16 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo,
 
       // Don't trigger shortcuts while typing. Selects count: the inspector has
       // several, and Delete over an open one used to delete the whole node.
-      if (isFormField(e.target)) {
+      // This has to come before "?" — it used to come after, so a question
+      // typed to the assistant opened this dialog and lost its question mark.
+      if (isFormField(e.target) || (e.target as HTMLElement | null)?.isContentEditable) {
+        return;
+      }
+
+      // Show/hide help with "?"
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setShowHelp(!showHelp);
         return;
       }
 
@@ -97,36 +114,13 @@ export default function KeyboardShortcuts({ onSave, onRefresh, onDelete, onUndo,
           </button>
         </div>
 
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-            <span className="text-gray-700 dark:text-gray-300">Undo</span>
-            <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+Z</kbd>
-          </div>
-
-          <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-            <span className="text-gray-700 dark:text-gray-300">Redo</span>
-            <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+Shift+Z</kbd>
-          </div>
-
-          <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-            <span className="text-gray-700 dark:text-gray-300">Save Graph</span>
-            <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+S</kbd>
-          </div>
-
-          <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-            <span className="text-gray-700 dark:text-gray-300">Refresh from Cluster</span>
-            <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Ctrl+R</kbd>
-          </div>
-
-          <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-            <span className="text-gray-700 dark:text-gray-300">Delete Selected</span>
-            <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">Delete</kbd>
-          </div>
-
-          <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-neutral-800 rounded">
-            <span className="text-gray-700 dark:text-gray-300">Show/Hide Help</span>
-            <kbd className="px-2 py-1 bg-gray-200 dark:bg-neutral-700 rounded text-xs font-mono">?</kbd>
-          </div>
+        <div className="space-y-1.5 text-sm">
+          {SHORTCUTS.map(([action, keys]) => (
+            <div key={action} className="flex items-center justify-between rounded bg-gray-50 p-2 dark:bg-neutral-800">
+              <span className="text-gray-700 dark:text-gray-300">{action}</span>
+              <kbd className="rounded bg-gray-200 px-2 py-1 font-mono text-xs dark:bg-neutral-700">{keys}</kbd>
+            </div>
+          ))}
         </div>
 
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-4 text-center">

@@ -130,7 +130,17 @@ export default function ResourceToolbox({ onAdd }: ResourceToolboxProps) {
             type="search"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === "Escape" && setQuery("")}
+            onKeyDown={e => {
+              if (e.key === "Escape") setQuery("");
+              // "Press Enter to add" meant a focused item; from the search box
+              // it did nothing. Now it adds the best match, so typing a kind
+              // and pressing Enter puts it on the canvas.
+              const first = results[0]?.kinds[0] ?? matchingCrds[0]?.kind;
+              if (e.key === "Enter" && query.trim() && first) {
+                onAdd(first);
+                setQuery("");
+              }
+            }}
             placeholder="Search resources…"
             aria-label="Search Kubernetes resource kinds"
             className="w-full rounded border border-neutral-800 bg-neutral-950 py-1.5 pl-7 pr-7 text-xs text-gray-200 transition-colors placeholder:text-gray-600 hover:border-neutral-700 focus:border-blue-500 focus:outline-none"
