@@ -130,11 +130,35 @@ check(
 await page.click('button[aria-label="Clear search"]');
 await sleep(300);
 
+// A "?" typed into a text box is a question mark, not the shortcuts dialog —
+// it used to be the dialog, so nobody could ask the assistant a question.
+await page.type('input[aria-label="Search Kubernetes resource kinds"]', "what?");
+await sleep(300);
+const typed = await page.$eval('input[aria-label="Search Kubernetes resource kinds"]', el => el.value);
+check('"?" types into a text box', typed === "what?" && !(await page.evaluate(() => document.body.innerText.includes("Keyboard Shortcuts"))), JSON.stringify(typed));
+await page.click('button[aria-label="Clear search"]');
+await sleep(200);
+
+// Enter in the search adds the best match, as the palette says it will.
+const cardsBefore = await page.$$eval(".react-flow__node", n => n.length);
+await page.type('input[aria-label="Search Kubernetes resource kinds"]', "autoscaler");
+await page.keyboard.press("Enter");
+await sleep(800);
+const newest = await page.$$eval(".react-flow__node", n => n.map(x => x.innerText.split("\n")[0]));
+check("Enter in the search adds the top match, with a short name", newest.length === cardsBefore + 1 && newest.includes("hpa-1"), newest.slice(-2).join(", "));
+// Undo it from the canvas, not from the search box, where Ctrl+Z is the
+// browser's own text undo.
+await page.evaluate(() => document.activeElement?.blur());
+await page.keyboard.down("Control");
+await page.keyboard.press("z");
+await page.keyboard.up("Control");
+await sleep(400);
+
 // ── Node click opens the inspector dock ────────────────────────────────────
 // Card heights before any selection: expanding in place was the old behaviour,
 // and it shoved every other node on the canvas around.
 const heightsBefore = await page.$$eval(".react-flow__node", els =>
-  els.map(e => Math.round(e.getBoundingClientRect().height))
+  els.map(e => Math.round(e.offsetHeight))
 );
 // A card no longer opens the dock on selection — it expands in place instead,
 // and the panel button is the way to the inspector.
@@ -174,7 +198,7 @@ check(
 
 // ── The node itself no longer expands in place ─────────────────────────────
 const heightsAfter = await page.$$eval(".react-flow__node", els =>
-  els.map(e => Math.round(e.getBoundingClientRect().height))
+  els.map(e => Math.round(e.offsetHeight))
 );
 check(
   "selecting a node does not resize any card",

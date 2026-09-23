@@ -710,3 +710,44 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     );
   },
 }));
+
+/**
+ * The canvas as it is right now, kept in this browser, so a reload, a closed
+ * tab or a crash does not take the work with it. Saved workflows are still the
+ * real record; this is the one you are in the middle of.
+ */
+const DRAFT_KEY = "k8n_draft";
+
+export interface Draft {
+  nodes: Node[];
+  edges: Edge[];
+  graphName: string;
+  graphId: string | null;
+  dirty: boolean;
+}
+
+export function readDraft(): Draft | null {
+  try {
+    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "null") as Draft | null;
+    return draft?.nodes?.length ? draft : null;
+  } catch {
+    return null;
+  }
+}
+
+if (typeof window !== "undefined") {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  useCanvasStore.subscribe((state, prev) => {
+    if (state.nodes === prev.nodes && state.edges === prev.edges && state.graphName === prev.graphName) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const { nodes, edges, graphName, graphId, dirty } = useCanvasStore.getState();
+      try {
+        if (nodes.length === 0) localStorage.removeItem(DRAFT_KEY);
+        else localStorage.setItem(DRAFT_KEY, JSON.stringify({ nodes, edges, graphName, graphId, dirty }));
+      } catch {
+        // Storage full or blocked: there is nowhere to keep it, and nothing to lose by not.
+      }
+    }, 500);
+  });
+}

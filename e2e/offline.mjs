@@ -30,6 +30,8 @@ await sleep(4000);
 // at — which is what a visitor to a hosted copy would do.
 await clickButton(page, "Just open the canvas");
 await sleep(1200);
+await clickButton(page, "Open workflow manager");
+await sleep(800);
 await clickButton(page, "Nginx starter");
 await sleep(2000);
 

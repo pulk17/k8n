@@ -104,3 +104,27 @@ export function makeEdge(source: Node, target: Node): Edge {
 /** Ids only have to be unique within a canvas. */
 export const nodeId = (kind: string) =>
   `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** The short names kubectl itself accepts, for the kinds whose full name is a mouthful. */
+const SHORT_NAMES: Record<string, string> = {
+  HorizontalPodAutoscaler: "hpa",
+  PersistentVolumeClaim: "pvc",
+  PersistentVolume: "pv",
+  ServiceAccount: "sa",
+  NetworkPolicy: "netpol",
+  ClusterRoleBinding: "crb",
+};
+
+/**
+ * A name for a new card: `deployment-1`, `hpa-2` — the first number not already
+ * on the canvas. It used to be the kind plus a random suffix, so a dropped
+ * autoscaler arrived as `horizontalpodautoscaler-x7k2p`, too long to read on
+ * its own card and nothing anyone would keep.
+ */
+export function defaultName(kind: string, taken: Iterable<string>): string {
+  const base = SHORT_NAMES[kind] ?? kind.toLowerCase();
+  const used = new Set(taken);
+  let i = 1;
+  while (used.has(`${base}-${i}`)) i++;
+  return `${base}-${i}`;
+}

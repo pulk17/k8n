@@ -16,7 +16,7 @@ import ReactFlow, {
   getTransformForBounds,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { useCanvasStore } from "../../store/canvasStore";
+import { readDraft, useCanvasStore } from "../../store/canvasStore";
 import { useLearningStore } from "../../store/learningStore";
 import { templates, templateToGraph } from "../../lib/templates";
 import K8sNode from "../../components/K8sNode";
@@ -34,12 +34,12 @@ import ApiConnectionError from "../../components/ApiConnectionError";
 import GraphChecks from "../../components/GraphChecks";
 import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
 import {
-  ApiError, CompileResult, applyYaml, compileGraph, errorMessage, fetchHealth, installHelmChart,
+  ApiError, CompileResult, HelmChart, applyYaml, compileGraph, errorMessage, fetchHealth, installHelmChart,
   watchResources,
 } from "../../lib/api";
 import { isValidConnection, validTargetsFor } from "../../lib/connections";
 import { NODE_SCHEMA, defaultsForKind } from "../../lib/nodeSchema";
-import { makeNode, nodeId, NodeData } from "../../lib/graph";
+import { defaultName, makeNode, nodeId, NodeData } from "../../lib/graph";
 import { checkGraph, issuesByNode } from "../../lib/graphChecks";
 import { notify, notifyError } from "../../lib/dialog";
 import YamlPreview from "../../components/YamlPreview";
@@ -55,6 +55,7 @@ const nodeTypes: NodeTypes = {
 // leftmost nodes underneath the toolbox. The fit is computed against the strip
 // that is actually visible between the two instead.
 const TOOLBOX_WIDTH = 292;
+const STATUS_BAR_HEIGHT = 64;
 
 function CanvasPageContent() {
   const {
@@ -169,17 +170,16 @@ function CanvasPageContent() {
     );
   }, [trackingCluster]);
 
-  // Runs once per session: either open the requested workflow, or — on a first
-  // ever visit — ask how much to explain before anything else happens. After
-  // that first answer it is the workflow manager, as before, so the question is
-  // asked once in the life of the browser rather than every session.
+  // Runs once on load: open what the address asks for; on a first ever visit,
+  // ask how much to explain; otherwise pick up the canvas where it was left.
+  // It used to open the workflows dialog on every new tab instead, on top of
+  // whatever you had been doing.
   useEffect(() => {
     if (graphIdToLoad) {
       loadGraph(graphIdToLoad);
       return;
     }
     if (stackToLoad) {
-      sessionStorage.setItem("workflow_opened", "true");
       hydrateGraph(stackToLoad);
       return;
     }
@@ -188,9 +188,10 @@ function CanvasPageContent() {
       setShowWelcome(true);
       return;
     }
-    if (!sessionStorage.getItem("workflow_opened")) {
-      sessionStorage.setItem("workflow_opened", "true");
-      setShowWorkflowManager(true);
+    const draft = readDraft();
+    if (draft && useCanvasStore.getState().nodes.length === 0) {
+      useCanvasStore.setState({ ...draft, history: [], historyIndex: -1 });
+      notify(draft.dirty ? "Picked up your unsaved canvas where you left it" : `Reopened ${draft.graphName}`);
     }
   }, [graphIdToLoad, stackToLoad, loadGraph, hydrateGraph]);
 
@@ -338,7 +339,9 @@ function CanvasPageContent() {
     return {
       left: TOOLBOX_WIDTH,
       width: container.clientWidth - TOOLBOX_WIDTH - right,
-      height: container.clientHeight,
+      // The node count and the Helm buttons float over the bottom edge; a
+      // graph framed to the full height put its last card underneath them.
+      height: container.clientHeight - STATUS_BAR_HEIGHT,
     };
   }, [inspectorOpen]);
 
@@ -395,12 +398,22 @@ function CanvasPageContent() {
     if (!node) return;
 
     const viewport = flow.getViewport();
-    // Move the whole graph clear when it fits, so the cards around the one you
-    // opened stay readable; when it does not fit, at least the card itself.
     const graph = getRectOfNodes(flow.getNodes());
-    const fits = graph.width * viewport.zoom <= area.width;
-    const right = fits ? graph.x + graph.width : node.position.x + (node.width ?? 280);
-    const overlap = viewport.x + right * viewport.zoom - (area.left + area.width);
+    const areaRight = area.left + area.width;
+    if (viewport.x + (graph.x + graph.width) * viewport.zoom <= areaRight) return;
+
+    // Frame the whole graph in what is left, never zooming in, as long as the
+    // cards stay readable — so the ones around the card you opened do not end
+    // up under the toolbox instead.
+    const READABLE = 0.6;
+    const [x, y, zoom] = getTransformForBounds(graph, area.width, area.height, READABLE, viewport.zoom, 0.08);
+    const fitsReadably = graph.width * zoom <= area.width && graph.height * zoom <= area.height;
+    if (fitsReadably) {
+      flow.setViewport({ x: x + area.left, y, zoom }, { duration: 200 });
+      return;
+    }
+    // Too big for that: bring out the card you opened, and only that.
+    const overlap = viewport.x + (node.position.x + (node.width ?? 280)) * viewport.zoom - areaRight;
     if (overlap > 0) {
       flow.setViewport({ ...viewport, x: viewport.x - overlap - 24 }, { duration: 200 });
     }
@@ -526,7 +539,8 @@ function CanvasPageContent() {
   const createNode = useCallback((kind: string, position: { x: number; y: number }, chart?: {
     name: string; description: string; repository?: { name: string; url: string };
   } | null) => {
-    const name = chart ? chart.name : `${kind.toLowerCase()}-${Math.random().toString(36).slice(2, 7)}`;
+    const taken = useCanvasStore.getState().nodes.map(n => String(n.data.name));
+    const name = chart ? chart.name : defaultName(kind, taken);
     const node = makeNode(nodeId(kind), kind, name, activeNamespace === "all" ? "default" : activeNamespace, {
       ...defaultsForKind(kind),
       ...(chart && {
@@ -564,7 +578,7 @@ function CanvasPageContent() {
    * there, so it steps diagonally until it finds clear space. Cards are about
    * 280x150, and stepping by less than that only half-hides the one beneath.
    */
-  const addAtCentre = useCallback((kind: string) => {
+  const addAtCentre = useCallback((kind: string, chart?: HelmChart) => {
     const area = visibleCanvas();
     if (!reactFlowInstance || !area) return;
 
@@ -583,7 +597,7 @@ function CanvasPageContent() {
       position.y += 60;
     }
 
-    createNode(kind, position);
+    createNode(kind, position, chart);
   }, [reactFlowInstance, visibleCanvas, createNode, nodes]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -694,8 +708,8 @@ function CanvasPageContent() {
         </div>
       )}
 
-      <ResourceToolbox onAdd={addAtCentre} />
-      <HelmDashboard />
+      <ResourceToolbox onAdd={kind => addAtCentre(kind)} />
+      <HelmDashboard onAdd={chart => addAtCentre("HelmRelease", chart)} />
       <HelmReleaseManager />
       <KeyboardShortcuts
         onSave={handleSave}
@@ -772,11 +786,7 @@ function CanvasPageContent() {
       {showWelcome && (
         <Welcome
           onStartTour={startTour}
-          onSkip={() => {
-            setShowWelcome(false);
-            sessionStorage.setItem("workflow_opened", "true");
-            setShowWorkflowManager(true);
-          }}
+          onSkip={() => setShowWelcome(false)}
         />
       )}
 

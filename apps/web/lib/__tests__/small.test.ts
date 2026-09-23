@@ -1,3 +1,5 @@
+import { age } from "../constants";
+import { defaultName } from "../graph";
 import { describe, expect, it } from "vitest";
 import { isNewer } from "../version";
 import { isClusterDown } from "../api";
@@ -97,5 +99,25 @@ spec:
   it("copes with a manifest that is only comments or empty", () => {
     expect(renderedObjects("")).toEqual([]);
     expect(renderedObjects("---\n---\n")).toEqual([]);
+  });
+});
+
+describe("naming a new card", () => {
+  it("uses kubectl's short name and the next free number", () => {
+    expect(defaultName("HorizontalPodAutoscaler", [])).toBe("hpa-1");
+    expect(defaultName("Deployment", ["deployment-1", "deployment-3"])).toBe("deployment-2");
+  });
+});
+
+describe("age", () => {
+  const now = Date.parse("2026-09-21T12:00:00Z");
+  it("reads like kubectl's AGE column", () => {
+    expect(age("2026-09-21T11:59:15Z", now)).toBe("45s");
+    expect(age("2026-09-21T11:48:00Z", now)).toBe("12m");
+    expect(age("2026-09-19T12:00:00Z", now)).toBe("2d");
+  });
+  it("leaves what it cannot read alone", () => {
+    expect(age("soon", now)).toBe("soon");
+    expect(age(undefined, now)).toBe("");
   });
 });

@@ -73,8 +73,9 @@ await page.evaluate(() => {
 await sleep(1200);
 
 
-// An empty canvas opens the workflow dialog over everything; the example gives
-// the expander something to expand.
+// The example gives the expander something to expand.
+await clickText(page, "Open workflow manager");
+await sleep(800);
 await clickText(page, "Nginx starter");
 await sleep(1500);
 
@@ -145,7 +146,8 @@ for (let i = 0; i < 40; i++) {
   if (/object/i.test(rendered) || /could not render/i.test(rendered)) break;
 }
 check("the chart is rendered without asking", /object/i.test(rendered), rendered.slice(0, 120).replace(/\s+/g, " "));
-check("the rendered YAML is shown", /apiVersion|kind:/.test(rendered), "");
+// Listed as the objects it creates; each opens to its own YAML.
+check("what the chart creates is listed", /\b(Deployment|StatefulSet|Service)\b/.test(rendered), "");
 if (!/object/i.test(rendered)) console.log("---- dock said: " + rendered.slice(0, 600));
 
 // --- 4. the image warning, before anything is installed ----------------------

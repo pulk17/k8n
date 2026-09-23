@@ -1,19 +1,21 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { PackageSearch, Search, X, Download } from "lucide-react";
+import { PackageSearch, Search, X, Star } from "lucide-react";
 import { HelmChart, searchHelmCharts } from "../lib/api";
 import { notifyError } from "../lib/dialog";
+import { usePanel } from "../lib/panel";
 
 /** Long enough that typing a word is one request, short enough to feel live. */
 const DEBOUNCE_MS = 300;
 
-export default function HelmDashboard() {
+/** Artifact Hub search. `onAdd` puts a chart on the canvas, as dropping one does. */
+export default function HelmDashboard({ onAdd }: { onAdd: (chart: HelmChart) => void }) {
   const [query, setQuery] = useState("");
   const [charts, setCharts] = useState<HelmChart[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = usePanel("helm-charts");
 
   /**
    * Searches as you type.
@@ -68,6 +70,13 @@ export default function HelmDashboard() {
   const term = query.trim();
   const results = term ? charts : [];
   const searching = Boolean(term) && loading;
+
+  // Dragging was the only way in, which left no path for a keyboard or a
+  // trackpad that makes long drags a chore.
+  const add = (chart: HelmChart) => {
+    onAdd(chart);
+    setOpen(false);
+  };
 
   const onDragStart = (event: React.DragEvent<HTMLDivElement>, chart: HelmChart) => {
     event.dataTransfer.setData("application/reactflow", "k8sNode");
@@ -140,26 +149,51 @@ export default function HelmDashboard() {
           results.map((chart) => (
             <div
               key={`${chart.repository?.name}/${chart.name}`}
-              className="group border border-gray-200 dark:border-neutral-800 rounded p-3 hover:border-blue-300 dark:hover:border-blue-700 bg-white dark:bg-neutral-900 transition-colors cursor-grab active:cursor-grabbing"
+              role="button"
+              tabIndex={0}
+              title="Click to add, or drag onto the canvas"
+              className="group border border-gray-200 dark:border-neutral-800 rounded p-3 hover:border-blue-300 dark:hover:border-blue-700 focus:border-blue-500 focus:outline-none bg-white dark:bg-neutral-900 transition-colors cursor-grab active:cursor-grabbing"
               draggable
               onDragStart={(e) => onDragStart(e, chart)}
+              onClick={() => add(chart)}
+              onKeyDown={e => e.key === "Enter" && add(chart)}
             >
               <div className="flex justify-between items-start mb-2">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate pr-2 flex-1">
                   {chart.name}
+                  {chart.app_version && (
+                    <span className="ml-1.5 font-mono text-[10px] font-normal text-gray-500">{chart.app_version}</span>
+                  )}
                 </h3>
-                <Download className="w-4 h-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                {typeof chart.stars === "number" && chart.stars > 0 && (
+                  <span className="flex flex-shrink-0 items-center gap-0.5 text-[10px] text-yellow-500" title="Stars on Artifact Hub">
+                    <Star className="h-3 w-3" /> {chart.stars}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 leading-relaxed mb-2">
                 {chart.description}
               </p>
-              {chart.repository?.name && (
-                <div className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded">
-                  <span className="text-[10px] font-medium text-blue-600 dark:text-blue-400">
+              <div className="flex flex-wrap items-center gap-1">
+                {chart.repository?.name && (
+                  <span className="rounded bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
                     {chart.repository.name}
                   </span>
-                </div>
-              )}
+                )}
+                {(chart.official || chart.repository?.official) && (
+                  <span className="rounded bg-green-950/60 px-2 py-1 text-[10px] font-medium text-green-400" title="Published by the project itself">
+                    official
+                  </span>
+                )}
+                {chart.repository?.verified_publisher && (
+                  <span className="rounded bg-neutral-800 px-2 py-1 text-[10px] text-gray-300" title="Artifact Hub has verified who publishes this repository">
+                    verified publisher
+                  </span>
+                )}
+                {chart.deprecated && (
+                  <span className="rounded bg-red-950/60 px-2 py-1 text-[10px] font-medium text-red-400">deprecated</span>
+                )}
+              </div>
             </div>
           ))
         )}
@@ -167,7 +201,7 @@ export default function HelmDashboard() {
       
       <div className="flex-shrink-0 bg-gray-50 dark:bg-neutral-900/50 px-4 py-2 border-t border-gray-200 dark:border-neutral-800">
         <p className="text-[10px] text-gray-500 dark:text-gray-400 text-center">
-          Drag charts to canvas to configure and deploy
+          Click a chart to add it, or drag it where you want it
         </p>
       </div>
     </div>
