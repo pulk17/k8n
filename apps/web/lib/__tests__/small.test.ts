@@ -1,3 +1,4 @@
+import { isLocalEngine } from "../session";
 import { age } from "../constants";
 import { defaultName } from "../graph";
 import { describe, expect, it } from "vitest";
@@ -119,5 +120,17 @@ describe("age", () => {
   it("leaves what it cannot read alone", () => {
     expect(age("soon", now)).toBe("soon");
     expect(age(undefined, now)).toBe("");
+  });
+});
+
+describe("which engine the hosted page may talk to", () => {
+  it("is only ever this machine", () => {
+    expect(isLocalEngine("http://127.0.0.1:8090")).toBe(true);
+    expect(isLocalEngine("http://localhost:8080")).toBe(true);
+    expect(isLocalEngine("http://[::1]:8080")).toBe(true);
+    expect(isLocalEngine("https://attacker.example")).toBe(false);
+    expect(isLocalEngine("http://localhost.attacker.example")).toBe(false);
+    expect(isLocalEngine("javascript:alert(1)")).toBe(false);
+    expect(isLocalEngine("not a url")).toBe(false);
   });
 });

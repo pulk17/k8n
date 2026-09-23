@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { Download, MousePointerClick, RefreshCw, Terminal } from 'lucide-react';
-import { API_URL } from '../lib/api';
+import { getEngine, setEngine } from '../lib/session';
 
 const RELEASES = 'https://github.com/pulk17/k8n/releases';
 
@@ -25,7 +26,25 @@ interface ApiConnectionErrorProps {
  * object is for, and see the checks with nothing running at all. So it offers
  * that rather than being a dead end.
  */
+/** Safari will not let a public page reach a program on this machine at all. */
+const isSafari = () =>
+  typeof navigator !== 'undefined' &&
+  /Safari\//.test(navigator.userAgent) &&
+  !/Chrome|Chromium|Edg\//.test(navigator.userAgent);
+
 export default function ApiConnectionError({ error, onRetry, onExplore }: ApiConnectionErrorProps) {
+  // The hosted copy has an engine address to get wrong; a page the engine
+  // served itself does not.
+  const hosted = Boolean(getEngine());
+  const [address, setAddress] = useState(getEngine());
+  const [bad, setBad] = useState(false);
+
+  const connect = () => {
+    const ok = setEngine(address.trim());
+    setBad(!ok);
+    if (ok) onRetry?.();
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-4">
       <div className="w-full max-w-xl overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900 shadow-xl">
@@ -77,14 +96,55 @@ export default function ApiConnectionError({ error, onRetry, onExplore }: ApiCon
               <Terminal className="h-3 w-3" />
               Already running it?
             </p>
-            <p className="text-[11px] leading-relaxed text-gray-400">
-              This page tried{' '}
-              <code className="font-mono text-gray-300">
-                {API_URL || "this page's own address"}
-              </code>
-              . Check that it matches the address k8n printed, and that you opened its pairing
-              link.
-            </p>
+            {hosted ? (
+              <>
+                <p className="text-[11px] leading-relaxed text-gray-400">
+                  Open the second link k8n printed — &ldquo;Or use it from the web&rdquo; — and this page
+                  connects by itself. Or give the address it printed:
+                </p>
+                <form
+                  className="mt-2 flex gap-2"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    connect();
+                  }}
+                >
+                  <input
+                    value={address}
+                    onChange={e => setAddress(e.target.value)}
+                    aria-label="Engine address"
+                    placeholder="http://127.0.0.1:8080"
+                    className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 font-mono text-[11px] text-gray-100 outline-none focus:border-blue-500"
+                  />
+                  <button type="submit" className="rounded bg-blue-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-blue-500">
+                    Connect
+                  </button>
+                </form>
+                {bad && (
+                  <p className="mt-1.5 text-[11px] text-red-300">
+                    Only an address on this machine — 127.0.0.1 or localhost. This page will not send your
+                    token anywhere else.
+                  </p>
+                )}
+                {isSafari() ? (
+                  <p className="mt-2 text-[11px] leading-relaxed text-yellow-300/90">
+                    Safari does not let a website reach a program on your own computer. Use the first link
+                    k8n printed, which opens k8n straight from your machine, or open this page in Chrome,
+                    Edge or Firefox.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+                    If your browser asks whether this site may reach devices on your network, allow it: that
+                    is this page asking to talk to k8n on your machine.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] leading-relaxed text-gray-400">
+                This page tried its own address. Check that it matches the address k8n printed, and that
+                you opened its pairing link.
+              </p>
+            )}
             <p className="mt-2 break-all font-mono text-[10px] text-gray-600">{error}</p>
           </div>
 

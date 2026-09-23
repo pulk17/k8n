@@ -1,5 +1,5 @@
 import { TOKEN_HEADER, getToken, reportUnauthorized } from "./session";
-import { API_URL, request } from "./api";
+import { apiBase, request } from "./api";
 import { GraphPatch } from "../store/canvasStore";
 
 export interface AIProvider {
@@ -90,7 +90,7 @@ export async function streamChat(
   onEvent: (event: AIEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const res = await fetch(`${API_URL}/api/ai/chat`, {
+  const res = await fetch(`${apiBase()}/api/ai/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", [TOKEN_HEADER]: getToken() },
     body: JSON.stringify(body),

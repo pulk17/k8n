@@ -45,6 +45,35 @@ It does **not** protect against anything that can read your filesystem or your
 browser storage, and it is not a substitute for real authentication on a shared
 address.
 
+## The hosted page
+
+The page at `k8n.pages.dev` has no server of its own: it is static files, and
+talks to the engine on your machine from your browser. For that to work the
+engine lets exactly three kinds of page call it — this machine, the hosted
+site, and anything you list in `ALLOWED_ORIGINS` — comparing the host exactly,
+and answers Chrome's local-network permission check for those only.
+
+What keeps that safe:
+
+- **Its own origin.** The token sits in the hosted site's browser storage, so
+  the site must never share an origin with anything else. A `*.pages.dev`
+  project or a dedicated domain, never a path on a shared host.
+- **Only this machine.** The page will only take an engine address on
+  `127.0.0.1`, `localhost` or `[::1]`; a link pointing it anywhere else is
+  ignored, so it cannot be tricked into sending your token to someone's server.
+- **Writes need the header.** A token in the address (`?t=`) is accepted on
+  `GET` only, for EventSource. Anything that changes the cluster must send
+  `X-K8n-Token`, which another page cannot add to a request without CORS
+  allowing it — so a token that leaked into a URL cannot be replayed as a
+  write from elsewhere.
+- **No framing, no referrer.** The site is served with `X-Frame-Options: DENY`
+  and `Referrer-Policy: no-referrer`, so it cannot be clickjacked and the
+  pairing link does not travel onward.
+
+The same rule as everywhere else applies: whoever controls the hosted site's
+code controls every cluster whose engine trusts it. If that is not a trade you
+want, `K8N_SITE` can point at your own copy, or use the local link only.
+
 ## Do not do this
 
 - **Do not expose k8n to the internet.** A single token, no rate limiting, no

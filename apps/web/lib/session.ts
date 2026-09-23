@@ -35,6 +35,54 @@ export function setToken(next: string): void {
   }
 }
 
+const ENGINE_KEY = "k8n_engine";
+
+/** Where k8n listens unless told otherwise. */
+export const DEFAULT_ENGINE = "http://127.0.0.1:8080";
+
+/**
+ * Where the engine is. Empty means this page's own origin: the binary serving
+ * its own UI, or the dev server proxying to it. The hosted site has no engine
+ * of its own, so it keeps the address of the one on your machine — taken from
+ * the link k8n prints, or typed in.
+ */
+let engine = "";
+
+export function getEngine(): string {
+  return engine;
+}
+
+/**
+ * Only this machine. A link that pointed the page at someone else's server
+ * would have it send them your token, so anything else is refused.
+ */
+export function isLocalEngine(address: string): boolean {
+  try {
+    const url = new URL(address);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Returns false, changing nothing, for an address that is not on this machine. */
+export function setEngine(address: string): boolean {
+  if (!isLocalEngine(address)) return false;
+  engine = new URL(address).origin;
+  try {
+    localStorage.setItem(ENGINE_KEY, engine);
+  } catch {
+    // Kept for this page's lifetime.
+  }
+  return true;
+}
+
+/** Is this page served by an engine (or a dev server in front of one)? */
+const servedLocally = () => isLocalEngine(window.location.origin);
+
 export function clearToken(): void {
   setToken("");
 }
@@ -56,10 +104,11 @@ export function stripTokenFromUrl(): void {
   if (typeof window === "undefined") return;
 
   const params = new URLSearchParams(window.location.search);
-  if (!params.has("t") && !params.has("token")) return;
+  if (!params.has("t") && !params.has("token") && !params.has("engine")) return;
 
   params.delete("t");
   params.delete("token");
+  params.delete("engine");
   const query = params.toString();
   window.history.replaceState(
     {},
@@ -84,6 +133,12 @@ function load(): void {
 
   try {
     const params = new URLSearchParams(window.location.search);
+
+    const linked = params.get("engine");
+    if (!(linked && setEngine(linked)) && !servedLocally()) {
+      engine = localStorage.getItem(ENGINE_KEY) || DEFAULT_ENGINE;
+    }
+
     const fromUrl = (params.get("t") || params.get("token") || "").trim();
 
     if (fromUrl) {

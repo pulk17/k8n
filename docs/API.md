@@ -10,8 +10,13 @@ when the API lives on a different host.
 Every `/api/*` and `/mcp*` request needs the pairing token. k8n generates one on
 first start, saves it in `~/.k8n/token`, and prints a link containing it; send it
 as `X-K8n-Token`, as `Authorization: Bearer <token>`, or — for EventSource, which
-cannot set headers — as `?t=<token>`. Without it the answer is `401`. `/health`
-is open, for container healthchecks.
+cannot set headers — as `?t=<token>`, which counts for `GET` requests only.
+Without it the answer is `401`. `/health` is open, for container healthchecks.
+
+Cross-origin calls are allowed from this machine, from the hosted page
+(`K8N_SITE`, default `https://k8n.pages.dev`) and from `ALLOWED_ORIGINS`; the
+engine also answers Chrome's `Access-Control-Request-Private-Network` preflight
+for those origins.
 
 ```bash
 curl -H "X-K8n-Token: $(cat ~/.k8n/token)" http://localhost:8080/api/cluster/contexts

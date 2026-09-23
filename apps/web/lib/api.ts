@@ -1,10 +1,11 @@
-// API_URL is empty by default so the browser talks to the Next.js origin and
-// next.config.ts proxies /api/* to the Go backend. Same-origin means no CORS in
-// the normal path; set NEXT_PUBLIC_API_URL only when pointing at a backend on a
-// different host.
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+import { TOKEN_HEADER, getEngine, getToken, reportUnauthorized, withToken } from "./session";
 
-import { TOKEN_HEADER, getToken, reportUnauthorized, withToken } from "./session";
+/**
+ * Where requests go. Empty — this page's own origin — when the engine serves
+ * the page, or the dev server proxies /api to it; the engine's address when the
+ * page is the hosted copy. NEXT_PUBLIC_API_URL pins a backend for development.
+ */
+export const apiBase = () => process.env.NEXT_PUBLIC_API_URL || getEngine();
 
 export interface ContainerSummary {
   name: string;
@@ -175,7 +176,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     const token = getToken();
     if (token) headers[TOKEN_HEADER] = token;
 
-    const res = await fetch(`${API_URL}${path}`, {
+    const res = await fetch(`${apiBase()}${path}`, {
       method,
       signal: controller.signal,
       headers,
@@ -220,7 +221,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     }
     if (isNetworkError(error)) {
       throw new Error(
-        `Cannot connect to the k8n API${API_URL ? ` at ${API_URL}` : ""}. Make sure the backend is running.`
+        `Cannot connect to the k8n API${apiBase() ? ` at ${apiBase()}` : ""}. Make sure the backend is running.`
       );
     }
     throw error;
@@ -274,7 +275,7 @@ export function watchResources(
     namespace && namespace !== "all" ? `?namespace=${encodeURIComponent(namespace)}` : "";
   // EventSource cannot set headers, so this one carries the token in the query.
   // The server redacts it from its request log.
-  const source = new EventSource(withToken(`${API_URL}/api/cluster/watch${query}`));
+  const source = new EventSource(withToken(`${apiBase()}/api/cluster/watch${query}`));
   const byUid = new Map<string, K8sResource>();
 
   source.onmessage = event => {

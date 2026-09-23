@@ -1,0 +1,8 @@
+# Cloudflare Pages reads this; the k8n binary ignores it. The hosted page keeps
+# a token that can change a cluster, so it must not be framed, and the pairing
+# link's query string must not leak out as a referrer.
+/*
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Permissions-Policy: camera=(), microphone=(), geolocation=()

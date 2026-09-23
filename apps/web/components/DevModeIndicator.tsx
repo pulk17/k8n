@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Code2, Database, Server, Wifi, WifiOff, ChevronDown, ChevronUp, X } from "lucide-react";
-import { API_URL } from "../lib/api";
+import { apiBase } from "../lib/api";
 
 export default function DevModeIndicator() {
   const [apiStatus, setApiStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
@@ -15,7 +15,7 @@ export default function DevModeIndicator() {
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const res = await fetch(`${API_URL}/health`);
+        const res = await fetch(`${apiBase()}/health`);
         if (res.ok) {
           const data = await res.json();
           setApiStatus('connected');
@@ -114,7 +114,7 @@ export default function DevModeIndicator() {
 
       <div className="px-3 py-2 bg-black/50 border-t border-gray-700">
         <div className="text-[10px] text-gray-400 space-y-0.5">
-          <div>API: {API_URL}</div>
+          <div>API: {apiBase() || "same origin"}</div>
           <div>Node: {process.env.NODE_ENV}</div>
         </div>
         {(apiStatus === 'disconnected' || k8sStatus === 'disconnected') && (

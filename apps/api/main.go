@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -52,7 +53,16 @@ func requireToken(token string) gin.HandlerFunc {
 			return
 		}
 
-		presented := auth.Presented(c.GetHeader, func(key string) string { return c.Query(key) })
+		// The token in the address is for EventSource, which can only GET and
+		// cannot set a header. Anything that changes something has to send the
+		// header: a page elsewhere can fire a no-CORS POST at localhost with a
+		// token it got hold of, but it cannot add a custom header without CORS
+		// letting it.
+		query := func(string) string { return "" }
+		if c.Request.Method == http.MethodGet {
+			query = c.Query
+		}
+		presented := auth.Presented(c.GetHeader, query)
 		if !auth.Matches(token, presented) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 				"error": "Not paired with this k8n",
@@ -86,41 +96,61 @@ func setK8sClient(c *k8s.Client) {
 	k8sClient = c
 }
 
-// corsConfig allows the browser to call this API cross-origin.
-//
-// In the normal setup Next.js proxies /api/* to us, so requests are same-origin
-// and none of this applies. Localhost is allowed for split dev servers;
-// anything else must be listed in ALLOWED_ORIGINS. The previous version allowed
-// any origin whose name merely contained "ngrok", which any host can claim.
-func corsConfig() cors.Config {
-	allowed := strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
+// hostedSite is the public copy of the UI, which talks to the engine on the
+// visitor's own machine. It has to be named exactly: CORS is all that stands
+// between a web page and the cluster behind this port. K8N_SITE overrides it
+// for a fork hosted somewhere else.
+func hostedSite() string {
+	if site := strings.TrimRight(strings.TrimSpace(os.Getenv("K8N_SITE")), "/"); site != "" {
+		return site
+	}
+	return "https://k8n.pages.dev"
+}
 
-	isLocalhost := func(origin string) bool {
-		for _, host := range []string{"localhost", "127.0.0.1", "[::1]"} {
-			if strings.HasPrefix(origin, "http://"+host) || strings.HasPrefix(origin, "https://"+host) {
-				return true
-			}
-		}
+// originAllowed decides which pages may call this engine: this machine, the
+// hosted site, and anything listed in ALLOWED_ORIGINS. It compares the host
+// exactly — the previous prefix check let http://localhost.attacker.com in.
+func originAllowed(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return false
 	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	if origin == hostedSite() {
+		return true
+	}
+	for _, a := range strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",") {
+		if a = strings.TrimSpace(a); a != "" && a == origin {
+			return true
+		}
+	}
+	return false
+}
 
+func corsConfig() cors.Config {
 	return cors.Config{
-		AllowOriginFunc: func(origin string) bool {
-			if isLocalhost(origin) {
-				return true
-			}
-			for _, a := range allowed {
-				if a != "" && strings.TrimSpace(a) == origin {
-					return true
-				}
-			}
-			return false
-		},
+		AllowOriginFunc:  originAllowed,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", auth.Header},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}
+}
+
+// allowPrivateNetwork answers Chrome's question before a public page may reach
+// a service on this machine: a preflight with
+// Access-Control-Request-Private-Network, which fails unless the reply says
+// yes. Only for origins CORS would let through anyway.
+func allowPrivateNetwork(c *gin.Context) {
+	if c.Request.Method == http.MethodOptions &&
+		c.GetHeader("Access-Control-Request-Private-Network") == "true" &&
+		originAllowed(c.GetHeader("Origin")) {
+		c.Header("Access-Control-Allow-Private-Network", "true")
+	}
+	c.Next()
 }
 
 var (
@@ -195,7 +225,7 @@ func main() {
 
 	r := gin.New()
 	r.Use(gin.Recovery(), requestLogger())
-	r.Use(cors.New(corsConfig()))
+	r.Use(allowPrivateNetwork, cors.New(corsConfig()))
 
 	// Anything that is not a GET may have changed the cluster — an apply, a
 	// scale, a Helm upgrade. The open watch streams read often again straight
@@ -353,5 +383,10 @@ func printStartupBanner(host, port, token string) {
 		return
 	}
 	fmt.Printf("\n  Open this link to pair your browser:\n\n    http://%s:%s/?%s=%s\n\n", shown, port, auth.QueryParam, token)
-	fmt.Printf("  Treat it like a password: it lets the holder change your cluster.\n\n")
+	// The same pairing through the hosted page, which then keeps this engine's
+	// address and talks to it. Not in Safari, which will not let a public page
+	// reach this machine; the link above always works.
+	hosted := url.Values{"engine": {"http://127.0.0.1:" + port}, auth.QueryParam: {token}}
+	fmt.Printf("  Or use it from the web:\n\n    %s/?%s\n\n", hostedSite(), hosted.Encode())
+	fmt.Printf("  Treat both like a password: they let the holder change your cluster.\n\n")
 }

@@ -37,7 +37,7 @@ Docker, no database required.
 ./k8n-linux-amd64          # macOS: ./k8n-darwin-arm64   Windows: k8n-windows-amd64.exe
 ```
 
-It prints a link. Open it:
+It prints two links. Either one works:
 
 ```
   k8n is running on http://127.0.0.1:8080
@@ -45,7 +45,22 @@ It prints a link. Open it:
   Open this link to pair your browser:
 
     http://127.0.0.1:8080/?t=zx8Q…
+
+  Or use it from the web:
+
+    https://k8n.pages.dev/?engine=http%3A%2F%2F127.0.0.1%3A8080&t=zx8Q…
 ```
+
+The first opens k8n straight from your machine. The second opens the hosted
+page at [k8n.pages.dev](https://k8n.pages.dev), which remembers where your
+engine is and talks to it from then on — your cluster credentials and AI key
+still never leave your computer, because the page has no server of its own.
+Your browser may ask whether the site may reach devices on your network: that
+is the page asking to talk to k8n, so allow it. Safari refuses outright; use the
+first link there.
+
+Without an engine running, the hosted page still works as a sandbox: draw a
+graph, read what every object is for, see the YAML and the checks.
 
 Or skip the copying entirely — `--open` starts k8n and opens the paired link
 for you, which is what a desktop shortcut should point at:
@@ -202,6 +217,8 @@ Everything is optional. Copy [.env.example](.env.example) if you want a file.
 |---|---|
 | `API_PORT` | Port to listen on (default 8080); `--port` wins over it |
 | `API_HOST` | Interfaces to bind; loopback by default |
+| `K8N_SITE` | The hosted page allowed to call this engine (default `https://k8n.pages.dev`), for a fork hosted elsewhere |
+| `ALLOWED_ORIGINS` | Other pages allowed to call it, comma-separated |
 | `K8N_TOKEN` | Fixed pairing token; otherwise generated and saved to `~/.k8n/token` |
 | `K8N_NO_AUTH` | `true` turns pairing off — trusted networks only |
 | `DATABASE_URL` | Postgres for saved workflows; without it they are files in `~/.k8n/workflows` |
@@ -251,6 +268,26 @@ cd e2e && npm ci && node run.mjs      # every browser suite, against a real clus
 so its token, workflows and AI key never touch yours; it uses your kubeconfig
 and skips what needs a cluster when there is none. CI runs all three against a
 kind cluster on every push.
+
+### Hosting the page
+
+The hosted copy is the same static export as the one inside the binary. On
+Cloudflare Pages, connect the repository with:
+
+| Setting | Value |
+|---|---|
+| Build command | `npm ci && npm run build:site -w apps/web` |
+| Build output directory | `apps/web/out` |
+| Environment variables | `K8N_EXPORT=1`, `NODE_VERSION=22` |
+
+`build:site` also copies each prefetch file to the name the browser asks for
+(the binary does that mapping as it serves), and `public/_headers` stops the
+page being framed or leaking its pairing link as a referrer. It must be its own
+origin — a `*.pages.dev` project or its own domain, never a path on a shared
+one — because the token lives in that origin's storage.
+
+A private demo with a real cluster, on Oracle Cloud's free tier behind
+Tailscale: [deploy/oracle](deploy/oracle/README.md).
 
 ### Docker
 
