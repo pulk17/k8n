@@ -383,7 +383,11 @@ export interface HelmChart {
   name: string;
   description: string;
   version?: string;
-  repository?: { name: string; url: string };
+  app_version?: string;
+  stars?: number;
+  official?: boolean;
+  deprecated?: boolean;
+  repository?: { name: string; url: string; official?: boolean; verified_publisher?: boolean };
 }
 
 /** What install, upgrade and template all take. */

@@ -197,6 +197,11 @@ func GetClusterResources(clientGetter func() *k8s.Client) gin.HandlerFunc {
 	}
 }
 
+// stamp is a creation time as RFC 3339, in UTC. It used to be written as
+// "2006-01-02 15:04:05" with no zone, which every page then read as local time
+// — so anyone not in UTC saw each object created hours before or after it was.
+func stamp(t metav1.Time) string { return t.UTC().Format(time.RFC3339) }
+
 // fromWatchCache asks the API server for its own cached copy instead of a
 // quorum read from etcd (this is what `kubectl get --resource-version=0` does).
 // k8n re-reads every few seconds to keep a status view current, and a view a
@@ -355,7 +360,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				StatusMessage:      statusMessage,
 				UID:                string(p.UID),
 				OwnerReferences:    owners,
-				CreatedAt:          p.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:          stamp(p.CreationTimestamp),
 				PodIP:              p.Status.PodIP,
 				NodeName:           p.Spec.NodeName,
 				RestartCount:       restartCount,
@@ -416,7 +421,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Status:             whenTerminating(d.DeletionTimestamp, status),
 				UID:                string(d.UID),
 				Selector:           selector,
-				CreatedAt:          d.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:          stamp(d.CreationTimestamp),
 				Replicas:           d.Spec.Replicas,
 				ReadyReplicas:      d.Status.ReadyReplicas,
 				Image:              image,
@@ -445,12 +450,20 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 			for _, o := range rs.OwnerReferences {
 				owners = append(owners, o.Name)
 			}
+			// A Deployment keeps its old ReplicaSets, scaled to zero, to roll
+			// back to. They read as "Active" beside the live one, which made a
+			// finished rollout look like two versions running at once.
+			status := "Active"
+			if rs.Spec.Replicas != nil && *rs.Spec.Replicas == 0 && len(owners) > 0 {
+				status = "Previous revision"
+			}
 			items = append(items, Resource{
 				Kind:            "ReplicaSet",
 				Name:            rs.Name,
 				Namespace:       rs.Namespace,
 				Labels:          rs.Labels,
-				Status:          whenTerminating(rs.DeletionTimestamp, "Active"),
+				CreatedAt:       stamp(rs.CreationTimestamp),
+				Status:          whenTerminating(rs.DeletionTimestamp, status),
 				UID:             string(rs.UID),
 				OwnerReferences: owners,
 			})
@@ -492,7 +505,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Status:      whenTerminating(s.DeletionTimestamp, "Active"),
 				UID:         string(s.UID),
 				Selector:    s.Spec.Selector,
-				CreatedAt:   s.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(s.CreationTimestamp),
 				ServiceType: string(s.Spec.Type),
 				ClusterIP:   s.Spec.ClusterIP,
 				ExternalIP:  externalIP,
@@ -530,7 +543,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations: cm.Annotations,
 				Status:      whenTerminating(cm.DeletionTimestamp, "Active"),
 				UID:         string(cm.UID),
-				CreatedAt:   cm.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(cm.CreationTimestamp),
 				DataKeys:    dataKeys,
 			})
 		}
@@ -581,7 +594,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Status:             whenTerminating(ds.DeletionTimestamp, status),
 				UID:                string(ds.UID),
 				Selector:           selector,
-				CreatedAt:          ds.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:          stamp(ds.CreationTimestamp),
 				Replicas:           &desired,
 				ReadyReplicas:      ds.Status.NumberReady,
 				Image:              image,
@@ -638,7 +651,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Status:             whenTerminating(sts.DeletionTimestamp, status),
 				UID:                string(sts.UID),
 				Selector:           selector,
-				CreatedAt:          sts.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:          stamp(sts.CreationTimestamp),
 				Replicas:           sts.Spec.Replicas,
 				ReadyReplicas:      sts.Status.ReadyReplicas,
 				Image:              image,
@@ -677,7 +690,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations: secret.Annotations,
 				Status:      whenTerminating(secret.DeletionTimestamp, "Active"),
 				UID:         string(secret.UID),
-				CreatedAt:   secret.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(secret.CreationTimestamp),
 				DataKeys:    dataKeys,
 			})
 		}
@@ -733,7 +746,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations: ing.Annotations,
 				Status:      whenTerminating(ing.DeletionTimestamp, "Active"),
 				UID:         string(ing.UID),
-				CreatedAt:   ing.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(ing.CreationTimestamp),
 				Backends:    backends,
 				Hosts:       hosts,
 			})
@@ -769,7 +782,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations: pvc.Annotations,
 				Status:      whenTerminating(pvc.DeletionTimestamp, string(pvc.Status.Phase)),
 				UID:         string(pvc.UID),
-				CreatedAt:   pvc.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(pvc.CreationTimestamp),
 				StorageSize: storage,
 				AccessMode:  accessMode,
 			})
@@ -801,7 +814,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations:     hpa.Annotations,
 				Status:          whenTerminating(hpa.DeletionTimestamp, status),
 				UID:             string(hpa.UID),
-				CreatedAt:       hpa.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:       stamp(hpa.CreationTimestamp),
 				ScaleTargetKind: hpa.Spec.ScaleTargetRef.Kind,
 				ScaleTargetName: hpa.Spec.ScaleTargetRef.Name,
 				MinReplicas:     hpa.Spec.MinReplicas,
@@ -830,7 +843,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations: sa.Annotations,
 				Status:      whenTerminating(sa.DeletionTimestamp, "Active"),
 				UID:         string(sa.UID),
-				CreatedAt:   sa.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(sa.CreationTimestamp),
 			})
 		}
 		appendResources(items)
@@ -862,7 +875,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations: job.Annotations,
 				Status:      whenTerminating(job.DeletionTimestamp, status),
 				UID:         string(job.UID),
-				CreatedAt:   job.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(job.CreationTimestamp),
 			})
 		}
 		appendResources(items)
@@ -887,7 +900,7 @@ func CollectResources(ctx context.Context, client *k8s.Client, namespace string)
 				Annotations: cj.Annotations,
 				Status:      whenTerminating(cj.DeletionTimestamp, "Active"),
 				UID:         string(cj.UID),
-				CreatedAt:   cj.CreationTimestamp.Format("2006-01-02 15:04:05"),
+				CreatedAt:   stamp(cj.CreationTimestamp),
 			})
 		}
 		appendResources(items)

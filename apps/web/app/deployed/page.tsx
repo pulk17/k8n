@@ -34,7 +34,7 @@ import {
   K8sResource,
   watchResources,
 } from "../../lib/api";
-import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS, statusStyle } from "../../lib/constants";
+import { DEFAULT_RESOURCE_COLOR, RESOURCE_COLORS, age, localTime, statusStyle } from "../../lib/constants";
 import { confirmAction, notify, notifyError } from "../../lib/dialog";
 import ApiConnectionError from "../../components/ApiConnectionError";
 import InspectPanel from "../../components/InspectPanel";
@@ -414,7 +414,9 @@ export default function DeployedPage() {
                                 {r.namespace}
                               </span>
                               {r.createdAt && (
-                                <span className="text-xs text-gray-400">{r.createdAt}</span>
+                                <span className="text-xs text-gray-400" title={localTime(r.createdAt)}>
+                                  {age(r.createdAt)}
+                                </span>
                               )}
                             </button>
 

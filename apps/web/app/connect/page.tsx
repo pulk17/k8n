@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Server, CheckCircle2, AlertCircle } from "lucide-react";
-import { connectToContext, errorMessage, fetchContexts } from "../../lib/api";
+import { connectToContext, errorMessage, fetchContexts, fetchHealth } from "../../lib/api";
 
 export default function ConnectPage() {
   const router = useRouter();
@@ -12,14 +12,18 @@ export default function ConnectPage() {
   const [selectedContext, setSelectedContext] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
+  const [current, setCurrent] = useState("");
 
+  // Starts on the cluster you are already on. It used to start on the first
+  // context in the list — which Go returned in random order — so pressing
+  // Connect without looking could move you to a different cluster.
   useEffect(() => {
-    fetchContexts()
-      .then((data) => {
-        setContexts(data || []);
-        if (data && data.length > 0) {
-          setSelectedContext(data[0]);
-        }
+    Promise.all([fetchContexts(), fetchHealth().catch(() => null)])
+      .then(([data, health]) => {
+        const list = data || [];
+        setContexts(list);
+        setCurrent(health?.context ?? "");
+        setSelectedContext(list.includes(health?.context ?? "") ? health!.context! : list[0] ?? "");
       })
       .catch((err) => setError(errorMessage(err)))
       .finally(() => setLoading(false));
@@ -111,7 +115,7 @@ export default function ConnectPage() {
                   disabled={connecting}
                 >
                   {contexts.map((ctx) => (
-                    <option key={ctx} value={ctx}>{ctx}</option>
+                    <option key={ctx} value={ctx}>{ctx === current ? `${ctx} (current)` : ctx}</option>
                   ))}
                 </select>
               )}
@@ -139,9 +143,6 @@ export default function ConnectPage() {
 
         {/* Footer */}
         <div className="text-center mt-4">
-          <p className="text-xs text-gray-400">
-            React Flow, Kubernetes and Go
-          </p>
           <a href="/canvas" className="text-xs text-blue-400 hover:text-blue-300 mt-1 inline-block">
             Back to Canvas
           </a>

@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"fmt"
+	"sort"
 
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
@@ -41,6 +42,8 @@ func GetContexts() ([]string, error) {
 	for name := range config.Contexts {
 		contexts = append(contexts, name)
 	}
+	// A map has no order, so the list came back shuffled on every call.
+	sort.Strings(contexts)
 	return contexts, nil
 }
 

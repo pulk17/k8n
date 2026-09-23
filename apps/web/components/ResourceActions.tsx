@@ -15,6 +15,7 @@ import {
   workloadAction,
 } from "../lib/api";
 import { confirmAction, notify, notifyError } from "../lib/dialog";
+import { age, localTime } from "../lib/constants";
 
 /** Tells the tunnels bar to refresh after one is opened or closed. */
 export const TUNNELS_CHANGED = "k8n:tunnels";
@@ -385,7 +386,7 @@ function JobHistory({ jobs }: { jobs: K8sResource[] }) {
       <ul className="space-y-0.5">
         {recent.map(j => (
           <li key={j.uid} className="flex gap-3">
-            <span className="text-gray-500">{j.createdAt}</span>
+            <span className="text-gray-500" title={localTime(j.createdAt)}>{age(j.createdAt)} ago</span>
             <span className="font-mono text-gray-700 dark:text-gray-300">{j.name}</span>
             <span className={j.status === "Failed" ? "text-red-500" : "text-gray-500"}>{j.status}</span>
           </li>

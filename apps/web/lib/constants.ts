@@ -139,3 +139,22 @@ export const CONNECTION_TYPES = {
 // the node handles declared — which is how outputs ended up with no matching
 // inputs. They now live in lib/connections.ts and both directions are derived
 // from one table. Import isValidConnection / validTargetsFor from there.
+
+/**
+ * How long ago, the way kubectl's AGE column says it: 45s, 12m, 3h, 2d. The
+ * API sends RFC 3339; anything unparseable comes back as it was.
+ */
+export function age(iso: string | undefined, now = Date.now()): string {
+  if (!iso) return "";
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return iso;
+  const s = Math.max(0, Math.round((now - then) / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+/** The exact moment, in the viewer's own time zone, for a hover. */
+export const localTime = (iso: string | undefined) =>
+  iso && !Number.isNaN(Date.parse(iso)) ? new Date(iso).toLocaleString() : iso ?? "";

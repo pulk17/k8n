@@ -12,11 +12,13 @@ import {
   upgradeHelmRelease,
 } from "../lib/api";
 import { confirmAction, notify, notifyError } from "../lib/dialog";
+import { usePanel } from "../lib/panel";
+import { age, localTime } from "../lib/constants";
 
 export default function HelmReleaseManager() {
   const [releases, setReleases] = useState<HelmRelease[]>([]);
   const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = usePanel("helm-releases");
   const [selectedRelease, setSelectedRelease] = useState<HelmRelease | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<HelmRelease[]>([]);
@@ -178,7 +180,7 @@ export default function HelmReleaseManager() {
                         {release.chart} v{release.chartVersion}
                       </p>
                       <p className="text-[10px] text-gray-500 dark:text-gray-500 mt-1">
-                        Revision {release.revision} • Updated {release.updated}
+                        Revision {release.revision} • <span title={localTime(release.updated)}>updated {age(release.updated)} ago</span>
                       </p>
                     </div>
                     <div className="flex gap-1">
@@ -250,7 +252,7 @@ export default function HelmReleaseManager() {
                         </span>
                       </div>
                       <p className="text-xs text-gray-600 dark:text-gray-400">{rev.chart}</p>
-                      <p className="text-[10px] text-gray-500 mt-1">{rev.updated}</p>
+                      <p className="text-[10px] text-gray-500 mt-1" title={localTime(rev.updated)}>{age(rev.updated)} ago</p>
                       {rev.description && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">{rev.description}</p>
                       )}

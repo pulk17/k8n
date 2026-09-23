@@ -15,13 +15,22 @@ import (
 )
 
 // ChartSummary is one Artifact Hub search result.
+// ChartSummary is one search result, in Artifact Hub's own field names. Stars,
+// the official and verified-publisher marks and the app version are what tell
+// the chart everyone uses apart from the dozen forks with the same name.
 type ChartSummary struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Version     string `json:"version"`
+	AppVersion  string `json:"app_version,omitempty"`
+	Stars       int    `json:"stars"`
+	Official    bool   `json:"official,omitempty"`
+	Deprecated  bool   `json:"deprecated,omitempty"`
 	Repository  struct {
-		Name string `json:"name"`
-		URL  string `json:"url"`
+		Name              string `json:"name"`
+		URL               string `json:"url"`
+		Official          bool   `json:"official,omitempty"`
+		VerifiedPublisher bool   `json:"verified_publisher,omitempty"`
 	} `json:"repository"`
 }
 
@@ -297,8 +306,13 @@ func releaseInfo(rel *release.Release) gin.H {
 	}
 	if rel.Info != nil {
 		info["status"] = string(rel.Info.Status)
-		info["updated"] = rel.Info.LastDeployed.Format("2006-01-02 15:04:05")
+		info["updated"] = rel.Info.LastDeployed.UTC().Format(time.RFC3339)
+		// k8n files the chart's repository in the description, because Helm
+		// keeps nowhere else for it; that is bookkeeping, not something to show.
 		info["description"] = rel.Info.Description
+		if repo := helm.RepoOf(rel); repo != "" {
+			info["description"] = "Installed from " + repo
+		}
 	}
 	if rel.Chart != nil && rel.Chart.Metadata != nil {
 		info["chart"] = rel.Chart.Metadata.Name
