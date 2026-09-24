@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -45,6 +46,8 @@ import { notify, notifyError } from "../../lib/dialog";
 import YamlPreview from "../../components/YamlPreview";
 import AIPanel from "../../components/AIPanel";
 import CommandPalette from "../../components/CommandPalette";
+import { DismissButton, useDismissed } from "../../components/Dismiss";
+import Tip from "../../components/Tip";
 
 const nodeTypes: NodeTypes = {
   k8sNode: K8sNode,
@@ -98,6 +101,7 @@ function CanvasPageContent() {
   const draggingFrom = useRef<string | null>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
   const [showWorkflowManager, setShowWorkflowManager] = useState(false);
+  const [offlineNoticeClosed, closeOfflineNotice] = useDismissed("offline-banner");
   const [showWelcome, setShowWelcome] = useState(false);
   const [touring, setTouring] = useState(false);
   const [compiling, setCompiling] = useState(false);
@@ -691,20 +695,19 @@ function CanvasPageContent() {
         onShowSystemNamespacesChange={setShowSystemNamespaces}
       />
 
-      {offline && (
+      {offline && !offlineNoticeClosed && (
         <div className="absolute inset-x-0 top-12 z-40 flex items-center justify-center gap-2 border-b border-blue-900/50 bg-blue-950/60 px-4 py-1.5 text-[11px] text-blue-200 backdrop-blur-sm">
           <span>
             No cluster connected — draw, read and check freely. Compiling and applying happen in
             the k8n you run on your own machine.
           </span>
-          <a
-            href="https://github.com/pulk17/k8n/releases"
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            href="/setup/"
             className="font-medium text-blue-300 underline underline-offset-2 hover:text-blue-100"
           >
-            Get it
-          </a>
+            Set it up
+          </Link>
+          <DismissButton onClick={closeOfflineNotice} className="absolute right-3" />
         </div>
       )}
 
@@ -730,6 +733,7 @@ function CanvasPageContent() {
           { label: "Go to deployed resources", hint: "live view, logs, open in browser", run: () => { window.location.href = "/deployed/"; } },
           { label: "Switch cluster", hint: "kubeconfig contexts", run: () => { window.location.href = "/connect/"; } },
           { label: "Help", run: () => { window.location.href = "/help/"; } },
+          { label: "Set up k8n on this machine", hint: "download, run, connect", run: () => { window.location.href = "/setup/"; } },
           ...Object.keys(NODE_SCHEMA).map(kind => ({ label: `Add ${kind}`, hint: "to the canvas", run: () => addAtCentre(kind) })),
         ]}
       />
@@ -752,6 +756,7 @@ function CanvasPageContent() {
             <span className="truncate text-xs text-red-300">{error}</span>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
+            <DismissButton onClick={() => useCanvasStore.setState({ error: null })} className="order-last text-red-300" />
             <button
               onClick={() => hydrateGraph()}
               className="flex items-center gap-1 rounded bg-red-800 px-2 py-1 text-xs text-red-200 transition-colors hover:bg-red-700"
@@ -813,6 +818,7 @@ function CanvasPageContent() {
             >
               Open workflow manager
             </button>
+            <Tip area="canvas" className="mt-8" />
           </div>
         </div>
       )}

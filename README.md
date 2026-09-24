@@ -1,3 +1,5 @@
+<img src="docs/images/logo.svg" alt="" width="72" height="72">
+
 # k8n
 
 A visual Kubernetes IDE that explains itself. Drag resources onto a canvas,
@@ -28,6 +30,11 @@ you edited**, so applying an imported Deployment cannot strip probes, volumes or
 limits that k8n never modelled.
 
 ## Run it
+
+**[Try it at k8n.pages.dev](https://k8n.pages.dev)**, and follow
+**[the setup guide](https://k8n.pages.dev/setup/)** to connect it to a cluster
+on your own machine — Docker, a local cluster, the download, step by step for
+Windows, macOS and Linux.
 
 Download the binary for your system from [Releases](../../releases), make it
 executable, and run it. It is one file — the UI is inside it. No Node, no
@@ -271,14 +278,20 @@ kind cluster on every push.
 
 ### Hosting the page
 
-The hosted copy is the same static export as the one inside the binary. On
-Cloudflare Pages, connect the repository with:
+The hosted copy is the same static export as the one inside the binary, on
+Cloudflare Pages (free: static requests are unlimited, and a direct upload uses
+no build minutes). The **Site** workflow publishes it after CI passes on `main`,
+from the exact files CI tested. It needs one repository secret,
+`CLOUDFLARE_API_TOKEN` — a Cloudflare API token with *Account → Cloudflare
+Pages → Edit* — and skips with a notice until it has one. By hand:
 
-| Setting | Value |
-|---|---|
-| Build command | `npm ci && npm run build:site -w apps/web` |
-| Build output directory | `apps/web/out` |
-| Environment variables | `K8N_EXPORT=1`, `NODE_VERSION=22` |
+```bash
+cd apps/web && K8N_EXPORT=1 npm run build:site
+cd "$(mktemp -d)" && npx wrangler@4 pages deploy /path/to/apps/web/out --project-name k8n --branch main
+```
+
+(Run wrangler from an empty directory: started inside the project, it tries to
+turn the Next.js app into a Worker.)
 
 `build:site` also copies each prefetch file to the name the browser asks for
 (the binary does that mapping as it serves), and `public/_headers` stops the

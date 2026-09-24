@@ -44,6 +44,8 @@ import ResourceActions from "../../components/ResourceActions";
 import Tunnels from "../../components/Tunnels";
 import RecentChanges from "../../components/RecentChanges";
 import { STACK_SOURCE_LABEL } from "../../lib/stacks";
+import { DismissButton } from "../../components/Dismiss";
+import Tip from "../../components/Tip";
 
 const KIND_ICONS: Record<string, typeof Box> = {
   Deployment: Box,
@@ -679,6 +681,7 @@ export default function DeployedPage() {
         </div>
 
         <RecentChanges />
+        <Tip area="deployed" className="mb-4" />
 
         {loading && (
           <div className="py-12 text-center">
@@ -688,8 +691,9 @@ export default function DeployedPage() {
         )}
 
         {error && !loading && (
-          <div className="mb-6 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
+          <div className="mb-6 flex items-start justify-between gap-3 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
             {error}
+            <DismissButton onClick={() => setError(null)} />
           </div>
         )}
 

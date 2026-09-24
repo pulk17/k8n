@@ -6,6 +6,7 @@ import { ArrowUpCircle, Server } from "lucide-react";
 import { fetchHealth } from "../lib/api";
 import { applyRisks } from "../lib/applyRisks";
 import { isNewer, latestRelease } from "../lib/version";
+import { DismissButton, useDismissed } from "./Dismiss";
 
 /**
  * Which cluster the canvas talks to, always in view — and red when its name
@@ -14,6 +15,8 @@ import { isNewer, latestRelease } from "../lib/version";
 export default function ClusterBadge() {
   const [context, setContext] = useState<string>();
   const [update, setUpdate] = useState<string | null>(null);
+  // Per version: hiding 0.9.1 still announces 0.9.2.
+  const [updateSeen, dismissUpdate] = useDismissed(`update-${update}`);
 
   useEffect(() => {
     fetchHealth()
@@ -45,17 +48,20 @@ export default function ClusterBadge() {
           <span className="truncate font-mono">{context}</span>
         </Link>
       )}
-      {update && (
-        <a
-          href="https://github.com/pulk17/k8n/releases/latest"
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-1 text-xs text-emerald-400 hover:underline"
-          title="A newer k8n is out"
-        >
-          <ArrowUpCircle className="h-3.5 w-3.5" />
-          {update}
-        </a>
+      {update && !updateSeen && (
+        <span className="flex items-center gap-0.5 text-xs text-emerald-400">
+          <a
+            href="https://github.com/pulk17/k8n/releases/latest"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1 hover:underline"
+            title="A newer k8n is out"
+          >
+            <ArrowUpCircle className="h-3.5 w-3.5" />
+            {update}
+          </a>
+          <DismissButton onClick={dismissUpdate} label="Hide until the next version" />
+        </span>
       )}
     </>
   );

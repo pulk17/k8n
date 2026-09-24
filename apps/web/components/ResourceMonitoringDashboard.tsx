@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Activity, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { errorMessage, fetchResourceMetrics } from '../lib/api';
 import InstallAddon from "./InstallAddon";
+import { DismissButton } from "./Dismiss";
 
 interface MetricsData {
   timestamp: number;
@@ -91,7 +92,10 @@ export default function ResourceMonitoringDashboard({ resourceName, resourceKind
 
       {error && (
         <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded text-sm text-yellow-700 dark:text-yellow-400">
-          <div className="font-semibold mb-1">{error}</div>
+          <div className="mb-1 flex items-start justify-between gap-2 font-semibold">
+            {error}
+            <DismissButton onClick={() => setError(null)} />
+          </div>
           <div className="text-xs mt-2 space-y-1">
             <div>Common causes:</div>
             <ul className="list-disc list-inside ml-2">

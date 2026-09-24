@@ -4,8 +4,6 @@ import { useState } from 'react';
 import { Download, MousePointerClick, RefreshCw, Terminal } from 'lucide-react';
 import { getEngine, setEngine } from '../lib/session';
 
-const RELEASES = 'https://github.com/pulk17/k8n/releases';
-
 interface ApiConnectionErrorProps {
   error: string;
   onRetry?: () => void;
@@ -77,16 +75,14 @@ export default function ApiConnectionError({ error, onRetry, onExplore }: ApiCon
           )}
 
           <a
-            href={RELEASES}
-            target="_blank"
-            rel="noreferrer"
+            href="/setup/"
             className="flex w-full items-center gap-3 rounded-md border border-neutral-800 px-4 py-3 transition-colors hover:border-neutral-700 hover:bg-neutral-800/50"
           >
             <Download className="h-4 w-4 flex-shrink-0 text-gray-400" />
             <span>
-              <span className="block text-sm font-medium text-gray-200">Download k8n</span>
+              <span className="block text-sm font-medium text-gray-200">Set up k8n</span>
               <span className="mt-0.5 block text-[11px] leading-relaxed text-gray-500">
-                One file for macOS, Linux or Windows. Run it and it prints a link to open.
+                Download it for your system, run it, connect this page — step by step, with every command to copy.
               </span>
             </span>
           </a>

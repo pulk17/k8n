@@ -18,6 +18,7 @@ import StartupBar from "./StartupBar";
 import ChartValues from "./ChartValues";
 import { IngressControllerCheck } from "./InstallAddon";
 import { FORWARDABLE, OpenInBrowser } from "./ResourceActions";
+import Tip from "./Tip";
 
 /**
  * One dock on the right of the canvas, for whatever is selected.
@@ -308,6 +309,8 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
         {tab === "live" && isLive && (
           <InspectorLive kind={kind} name={name} namespace={namespace} />
         )}
+
+        <Tip area="inspector" className="mx-4 mb-4 mt-auto" />
       </div>
     </Dock>
   );

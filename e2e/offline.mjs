@@ -37,7 +37,7 @@ await sleep(2000);
 
 let text = await page.evaluate(() => document.body.innerText);
 check("a page with no engine says so", /No cluster connected/i.test(text));
-check("it points at the download", /Get it/i.test(text));
+check("it points at the setup guide", /Set it up/i.test(text) && (await page.$('a[href="/setup/"]')) !== null);
 check("it does not tell a visitor to run a Go command", !/go run main/i.test(text));
 
 const nodes = await page.$$eval(".react-flow__node", n => n.length);

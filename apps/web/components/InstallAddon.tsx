@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { errorMessage, fetchIngressClasses, installHelmChart } from "../lib/api";
 import { confirmAction, notify, notifyError } from "../lib/dialog";
+import { DismissButton, useDismissed } from "./Dismiss";
 
 /**
  * Cluster add-ons k8n features lean on, installed through the Helm path it
@@ -79,17 +80,21 @@ export default function InstallAddon({ name, onInstalled }: { name: AddonName; o
  */
 export function IngressControllerCheck() {
   const [classes, setClasses] = useState<string[] | null>(null);
+  const [hidden, hide] = useDismissed("no-ingress-controller");
 
   useEffect(() => {
     // Unknown (offline, no cluster) stays null and shows nothing.
     fetchIngressClasses().then(setClasses).catch(() => {});
   }, []);
 
-  if (classes === null || classes.length > 0) return null;
+  if (classes === null || classes.length > 0 || hidden) return null;
 
   return (
     <div className="rounded border border-yellow-900/50 bg-yellow-950/20 p-2.5">
-      <p className="text-[11px] font-medium text-gray-200">This cluster has no ingress controller</p>
+      <p className="flex items-start justify-between gap-2 text-[11px] font-medium text-gray-200">
+        This cluster has no ingress controller
+        <DismissButton onClick={hide} className="text-gray-400" />
+      </p>
       <p className="mt-1 text-[10px] leading-relaxed text-gray-400">
         An Ingress is only a routing rule; a controller is the program that carries it out. Without one this Ingress
         will apply and then do nothing. On a laptop cluster, reach the controller afterwards with Open in browser on

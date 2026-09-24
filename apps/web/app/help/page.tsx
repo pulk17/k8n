@@ -1,8 +1,11 @@
 "use client";
 
-import { ArrowLeft, Box, Globe, FileCode, Lock, Network, Zap, GitBranch } from "lucide-react";
+import { ArrowLeft, Box, Globe, FileCode, Lock, Network, Zap, GitBranch, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { SHORTCUTS } from "../../components/KeyboardShortcuts";
+import { TIPS } from "../../components/Tip";
+import { resetDismissed } from "../../components/Dismiss";
+import { notify } from "../../lib/dialog";
 import { CONNECTION_TYPES } from "../../lib/constants";
 
 /** What each connection means, in the order worth explaining first. */
@@ -35,6 +38,17 @@ export default function HelpPage() {
             Learn how to use k8n to visually design and deploy Kubernetes workloads
           </p>
         </div>
+
+        <Link
+          href="/setup/"
+          className="mb-6 flex items-center justify-between rounded-lg border border-blue-800 bg-blue-950/40 px-5 py-4 text-sm text-blue-100 hover:bg-blue-950/70"
+        >
+          <span>
+            <span className="block font-semibold">Setting k8n up for the first time?</span>
+            <span className="text-blue-200/70">Docker, a local cluster, the k8n download and connecting this page — step by step.</span>
+          </span>
+          <span aria-hidden>→</span>
+        </Link>
 
         {/* Quick Start */}
         <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6 mb-6">
@@ -271,6 +285,28 @@ export default function HelpPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Tips */}
+        <section className="bg-white dark:bg-neutral-900 rounded-lg border border-gray-200 dark:border-neutral-800 p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">Tips</h2>
+          <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+            {TIPS.map(tip => (
+              <li key={tip.text} className="flex gap-2">
+                <Lightbulb className="mt-0.5 h-4 w-4 flex-shrink-0 text-yellow-500/80" />
+                {tip.text}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => {
+              resetDismissed();
+              notify("Tips and closed notices will show again", "success");
+            }}
+            className="mt-4 rounded border border-neutral-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-neutral-800"
+          >
+            Show tips and closed notices again
+          </button>
         </section>
 
         {/* Reaching an app */}
