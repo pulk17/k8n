@@ -15,16 +15,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
 
       - name: Install web dependencies
@@ -34,7 +34,7 @@ jobs:
         working-directory: apps/web
         env:
           K8N_EXPORT: "1"
-        run: npx next build
+        run: npm run build:site
 
       - name: Stage it for embedding
         run: |
@@ -68,15 +68,26 @@ jobs:
         working-directory: dist
         run: sha256sum k8n-* > SHA256SUMS.txt
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: dist/*
           generate_release_notes: true
           body: |
-            Download the binary for your system, make it executable, and run it.
-            It prints a link — open that link to pair your browser.
+            **New here? Follow the setup guide: https://k8n.pages.dev/setup/** — Docker, a local cluster, this download, and connecting the website, step by step.
 
-            macOS and Windows will warn that the binary is unsigned: this
-            project has no code-signing certificate. See the README for how to
-            get past that, or build from source.
+            Download the binary for your system and run it. It prints two links: one opens k8n
+            straight from your machine, the other opens https://k8n.pages.dev connected to it.
+
+            | System | File |
+            |---|---|
+            | Windows | `k8n-windows-amd64.exe` |
+            | macOS, Apple Silicon | `k8n-darwin-arm64` |
+            | macOS, Intel | `k8n-darwin-amd64` |
+            | Linux | `k8n-linux-amd64`, `k8n-linux-arm64` |
+
+            `k8n-mcp-*` is the stdio MCP server, for AI clients that start it themselves.
+            `SHA256SUMS.txt` has a checksum for every file.
+
+            macOS and Windows will warn that the binary is unsigned: this project has no
+            code-signing certificate. The setup guide shows how to get past that, or build from source.

@@ -1,0 +1,11 @@
+# Keeps the workflows' actions current, so they do not fall off a runtime
+# GitHub retires. Monthly and grouped: one pull request, not one per action.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

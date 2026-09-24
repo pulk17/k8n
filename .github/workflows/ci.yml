@@ -2,24 +2,36 @@ name: CI
 
 # Every push and pull request: unit tests on both halves, then the real binary
 # against a real (throwaway, kind) cluster, driven by the browser suites in e2e/.
+# On main, the site it tested is kept for the Site workflow to publish.
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**", "deploy/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "deploy/**", "LICENSE"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push makes the run in progress for the same branch pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
@@ -40,9 +52,11 @@ jobs:
           go vet ./...
           go test -cover ./...
 
-      - name: Build the single binary
+      - name: Build the site and the single binary
+        env:
+          K8N_EXPORT: "1"
         run: |
-          (cd apps/web && K8N_EXPORT=1 npx next build)
+          (cd apps/web && npm run build:site)
           rm -rf apps/api/ui && cp -r apps/web/out apps/api/ui
           (cd apps/api && CGO_ENABLED=0 go build -tags embedui -trimpath -o ../../dist/k8n-linux-amd64 .)
 
@@ -59,8 +73,18 @@ jobs:
 
       - name: Keep failure screenshots
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots
           path: e2e/*.png
           if-no-files-found: ignore
+
+      # Exactly the files that just passed, for the Site workflow.
+      - name: Keep the tested site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: apps/web/out
+          include-hidden-files: true
+          retention-days: 7
