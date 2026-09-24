@@ -430,7 +430,7 @@ const overlaps = await page.$$eval(".react-flow__node", els => {
 });
 check("a clicked-in node does not land on top of another", overlaps === 0, `${overlaps} overlapping pairs`);
 
-await page.screenshot({ path: "C:/Pulkit/Coding/Projects/cf/k8n-ui.png" });
+await page.screenshot({ path: join(import.meta.dirname, "k8n-ui.png") });
 
 check("no page errors", pageErrors.length === 0, pageErrors.slice(0, 3).join(" ~ "));
 
@@ -450,7 +450,7 @@ check(
   preview.lower.includes("the same thing in kubectl") &&
     preview.lower.includes("kubectl apply --dry-run=server"),
 );
-await page.screenshot({ path: "C:/Pulkit/Coding/Projects/cf/k8n-preview.png" });
+await page.screenshot({ path: join(import.meta.dirname, "k8n-preview.png") });
 await clickText(page, "Cancel", "button");
 await sleep(500);
 
