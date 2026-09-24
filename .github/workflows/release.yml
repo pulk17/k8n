@@ -45,6 +45,16 @@ jobs:
         working-directory: apps/api
         run: go test ./...
 
+      # Name, publisher, version and icon for the Windows binary — what
+      # Properties and Task Manager show. (The "publisher" in Windows' own
+      # warning comes from a code-signing certificate, which this is not.)
+      - name: Windows file details
+        working-directory: apps/api
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          case "$v" in [0-9]*) ;; *) v=0.0.0 ;; esac
+          go run github.com/tc-hib/go-winres@v0.3.3 make --in winres/winres.json --arch amd64 --product-version "$v" --file-version "$v"
+
       - name: Build every target
         working-directory: apps/api
         run: |

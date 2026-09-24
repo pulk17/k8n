@@ -1,0 +1,52 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": "icon.png"
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "k8n",
+          "version": ""
+        },
+        "description": "k8n",
+        "minimum-os": "win7",
+        "execution-level": "as invoker",
+        "ui-access": false,
+        "auto-elevate": false,
+        "dpi-awareness": "system",
+        "disable-theming": false,
+        "disable-window-filtering": false,
+        "high-resolution-scrolling-aware": false,
+        "ultra-high-resolution-scrolling-aware": false,
+        "long-path-aware": true,
+        "printer-driver-isolation": false,
+        "gdi-scaling": false,
+        "segment-heap": false,
+        "use-common-controls-v6": false
+      }
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "0.0.0.0",
+          "product_version": "0.0.0.0"
+        },
+        "info": {
+          "0409": {
+            "CompanyName": "pulk1t",
+            "FileDescription": "k8n, a visual Kubernetes IDE",
+            "InternalName": "k8n",
+            "LegalCopyright": "Copyright (c) pulk1t. MIT License.",
+            "OriginalFilename": "k8n.exe",
+            "ProductName": "k8n"
+          }
+        }
+      }
+    }
+  }
+}

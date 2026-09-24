@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -10,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -201,12 +205,13 @@ func main() {
 		fmt.Printf("No cluster connection yet: %v\n", err)
 	}
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		dbURL = "postgres://k8n:k8npassword@localhost:5432/k8n_db?sslmode=disable"
-	}
-	if err := handlers.InitDB(dbURL); err != nil {
-		fmt.Printf("No database; saved workflows are disabled: %v\n", err)
+	// Postgres only when asked for. Without it workflows are files in
+	// ~/.k8n/workflows; trying a default address on every start was a network
+	// probe that told everyone their workflows were "disabled" when they were not.
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		if err := handlers.InitDB(dbURL); err != nil {
+			fmt.Printf("DATABASE_URL is set but the database is unreachable (%v); workflows are saved as files instead.\n", err)
+		}
 	}
 
 	// The assistant's provider and key: the saved file first, the environment
@@ -341,7 +346,8 @@ func main() {
 	if port == "" {
 		port = os.Getenv("API_PORT")
 	}
-	if port == "" {
+	chosen := port != ""
+	if !chosen {
 		port = "8080"
 	}
 	// Loopback by default. There is no authentication on any of these routes,
@@ -353,18 +359,101 @@ func main() {
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	printStartupBanner(host, port, token)
+	// Double-clicked: there is no terminal to copy a link from, and the window
+	// closes the moment k8n exits.
+	alone := launchedOnItsOwn()
 
-	// --open is for a desktop shortcut: start k8n and land in the app, paired,
-	// without anyone having to copy a token out of a terminal.
-	if *openFlag {
-		go openWhenReady(port, token)
+	// Listen first, and only then print the links: they used to be printed
+	// before the port was known to be free, so a clash produced links to
+	// whatever else was listening there.
+	listener, at, err := listen(host, port, chosen)
+	if errors.Is(err, errAlreadyRunning) {
+		port = strconv.Itoa(at)
+		fmt.Printf("\n  k8n is already running on this machine.\n")
+		printStartupBanner(host, port, token)
+		if alone {
+			openInBrowser("http://127.0.0.1:" + port + "/?" + auth.QueryParam + "=" + token)
+			pause()
+		}
+		return
 	}
-
-	if err := r.Run(host + ":" + port); err != nil {
-		fmt.Printf("Server stopped: %v\n", err)
+	if err != nil {
+		fmt.Printf("\n  k8n could not start: %v\n", err)
+		if alone {
+			pause()
+		}
 		os.Exit(1)
 	}
+	port = strconv.Itoa(at)
+	printStartupBanner(host, port, token)
+
+	// --open is for a desktop shortcut, and a double-click is the same thing:
+	// start k8n and land in the app, paired, with nothing to copy.
+	if *openFlag || alone {
+		go openWhenReady(port, token)
+	}
+	if alone {
+		fmt.Printf("  Keep this window open while you use k8n; closing it stops it.\n\n")
+	}
+
+	if err := r.RunListener(listener); err != nil {
+		fmt.Printf("Server stopped: %v\n", err)
+		if alone {
+			pause()
+		}
+		os.Exit(1)
+	}
+}
+
+var errAlreadyRunning = errors.New("k8n is already running there")
+
+// listen takes the port asked for. When nobody asked — the default — and it is
+// taken, it moves up to the next free one rather than giving up: someone who
+// double-clicked k8n has no way to pass --port. If what holds the port is
+// another k8n, it says so instead of starting a second.
+func listen(host, port string, chosen bool) (net.Listener, int, error) {
+	first, err := strconv.Atoi(port)
+	if err != nil {
+		return nil, 0, fmt.Errorf("%q is not a port number", port)
+	}
+	for p := first; p < first+20; p++ {
+		l, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(p)))
+		if err == nil {
+			if p != first {
+				fmt.Printf("\n  Port %d is in use by another program, so k8n is on %d.\n", first, p)
+			}
+			return l, p, nil
+		}
+		// An earlier k8n may itself have moved up from a busy default.
+		if isK8n(p) {
+			return nil, p, errAlreadyRunning
+		}
+		if chosen {
+			return nil, 0, fmt.Errorf("port %d is in use (%v); pick another with --port", p, err)
+		}
+	}
+	return nil, 0, fmt.Errorf("ports %d to %d are all in use; pick one with --port", first, first+19)
+}
+
+// isK8n asks whatever holds the port whether it is k8n.
+func isK8n(port int) bool {
+	client := http.Client{Timeout: time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/health", port))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var health struct {
+		Status  string `json:"status"`
+		Version string `json:"version"`
+	}
+	return json.NewDecoder(resp.Body).Decode(&health) == nil && health.Status == "ok" && health.Version != ""
+}
+
+// pause keeps a double-clicked window open long enough to read.
+func pause() {
+	fmt.Printf("  Press Enter to close this window.")
+	_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 }
 
 // printStartupBanner gives the user the one thing they need: a link that pairs

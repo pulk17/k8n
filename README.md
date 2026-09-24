@@ -58,7 +58,8 @@ It prints two links. Either one works:
     https://k8n.pages.dev/?engine=http%3A%2F%2F127.0.0.1%3A8080&t=zx8Q…
 ```
 
-The first opens k8n straight from your machine. The second opens the hosted
+On Windows you can simply double-click it: it opens your browser, already
+paired, and keeps its window open to show you where it is. The first link opens k8n straight from your machine. The second opens the hosted
 page at [k8n.pages.dev](https://k8n.pages.dev), which remembers where your
 engine is and talks to it from then on — your cluster credentials and AI key
 still never leave your computer, because the page has no server of its own.
@@ -222,7 +223,7 @@ Everything is optional. Copy [.env.example](.env.example) if you want a file.
 
 | Variable | Does |
 |---|---|
-| `API_PORT` | Port to listen on (default 8080); `--port` wins over it |
+| `API_PORT` | Port to listen on (default 8080, or the next free one if something else has it); `--port` wins over it |
 | `API_HOST` | Interfaces to bind; loopback by default |
 | `K8N_SITE` | The hosted page allowed to call this engine (default `https://k8n.pages.dev`), for a fork hosted elsewhere |
 | `ALLOWED_ORIGINS` | Other pages allowed to call it, comma-separated |

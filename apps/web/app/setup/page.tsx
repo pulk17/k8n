@@ -67,7 +67,7 @@ const CLUSTER: Record<OS, Step[]> = {
 
 const RUN: Record<OS, Step[]> = {
   windows: [
-    { text: "Run it from your Downloads folder. Windows SmartScreen will warn that it is unsigned: More info → Run anyway.", commands: [".\\k8n-windows-amd64.exe"] },
+    { text: "Double-click it. Windows SmartScreen will warn that it is unsigned: More info → Run anyway. It opens your browser by itself, already paired. From a terminal instead:", commands: [".\\k8n-windows-amd64.exe"] },
   ],
   mac: [
     { text: "macOS blocks unsigned downloads until you clear the flag. Then run it (use k8n-darwin-amd64 on an Intel Mac):", commands: ["chmod +x k8n-darwin-arm64 && xattr -d com.apple.quarantine k8n-darwin-arm64", "./k8n-darwin-arm64"] },
@@ -79,7 +79,7 @@ const TROUBLE: [string, string][] = [
   ["“k8n runs on your machine” instead of the app", "The engine is not running, or runs on another port. Start it, or give the address it printed on that screen."],
   ["You clicked Block on the browser's prompt", "Click the icon left of the address bar → Site settings → allow local network access (called “Apps on this device” in newer Chrome), then reload."],
   ["“Not paired with this k8n”", "Its token changed. Open the “Or use it from the web” link it prints again."],
-  ["Port 8080 is already taken", "Start it with --port 9000; the links it prints use that port."],
+  ["Something else uses port 8080", "k8n moves to the next free port by itself and says so; the links it prints use that port. To pick one yourself: --port 9000."],
   ["No cluster, or no contexts to pick", "Make sure kubectl get nodes works in a terminal first. If your kubeconfig lives elsewhere, set KUBECONFIG before starting k8n."],
   ["The cluster is gone after a restart", "Start Docker Desktop and wait for Kubernetes to go green. If it never does: Settings → Kubernetes → Reset Kubernetes Cluster (this deletes what was on it)."],
   ["Safari", "Safari will not let a website reach a program on your computer. Use Chrome, Edge or Firefox — or the first link k8n prints, which serves this same app from your machine."],
