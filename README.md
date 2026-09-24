@@ -1,6 +1,9 @@
-<img src="docs/images/logo.svg" alt="" width="72" height="72">
-
-# k8n
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/wordmark-dark.svg">
+    <img src="docs/images/wordmark-light.svg" alt="k8n" height="72">
+  </picture>
+</h1>
 
 A visual Kubernetes IDE that explains itself. Drag resources onto a canvas,
 wire them together, and see the YAML — and the `kubectl` — behind every one of

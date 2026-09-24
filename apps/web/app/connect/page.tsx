@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import Logo from "../../components/Logo";
+import Wordmark from "../../components/Wordmark";
 import { connectToContext, errorMessage, fetchContexts, fetchHealth } from "../../lib/api";
 
 export default function ConnectPage() {
@@ -49,11 +49,10 @@ export default function ConnectPage() {
       <div className="max-w-md w-full">
         {/* Logo/Title */}
         <div className="text-center mb-8">
-          <Logo className="mx-auto mb-4 h-16 w-16" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-            k8n
+          <h1 className="flex justify-center text-gray-100">
+            <Wordmark className="h-14" />
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
             Visual Kubernetes IDE
           </p>
         </div>

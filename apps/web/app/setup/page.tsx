@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ArrowLeft, Check, CheckCircle2, Circle, Copy, Download, Loader2, RefreshCw } from "lucide-react";
-import Logo from "../../components/Logo";
+import Wordmark from "../../components/Wordmark";
 import { fetchHealth } from "../../lib/api";
 import { getEngine } from "../../lib/session";
 
@@ -185,9 +185,9 @@ export default function SetupPage() {
             Back to the canvas
           </Link>
           <div className="flex items-center gap-4">
-            <Logo className="h-12 w-12" />
             <div>
-              <h1 className="text-2xl font-bold text-gray-100">Set up k8n</h1>
+              <Wordmark className="mb-3 h-10 text-gray-100" />
+              <h1 className="text-2xl font-bold text-gray-100">Set it up</h1>
               <p className="text-sm text-gray-400">
                 About ten minutes, once. k8n runs on your own machine, next to your cluster, so your credentials never
                 leave it.
