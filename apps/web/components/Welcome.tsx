@@ -57,6 +57,13 @@ export default function Welcome({
               </span>
             </button>
           ))}
+          <p className="px-1 pt-1 text-[11px] leading-relaxed text-gray-500">
+            Everything here works without a cluster. To deploy for real, k8n runs on your machine —{" "}
+            <a href="/setup/" className="text-blue-400 hover:underline">
+              the setup guide
+            </a>{" "}
+            takes about ten minutes.
+          </p>
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-neutral-800 bg-neutral-950/50 px-4 py-3">

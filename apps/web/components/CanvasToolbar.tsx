@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  CheckCircle2, Eye, FolderOpen, GraduationCap, HelpCircle, Loader2, Play, RefreshCw, Save,
+  CheckCircle2, Eye, FolderOpen, GraduationCap, HelpCircle, Loader2, Play, Plug, RefreshCw, Save,
   SlidersHorizontal,
 } from "lucide-react";
 import { DEPTHS, useLearningStore } from "../store/learningStore";
@@ -49,6 +49,9 @@ interface CanvasToolbarProps {
 
   /** Replays the guided walkthrough. */
   onStartTour: () => void;
+
+  /** No engine answered: the toolbar offers the way to set one up. */
+  offline?: boolean;
 }
 
 export default function CanvasToolbar({
@@ -57,7 +60,7 @@ export default function CanvasToolbar({
   onOpenWorkflows, onSave, onRefresh, onReviewAndApply,
   namespaces, activeNamespace, onNamespaceChange,
   showPods, onShowPodsChange,
-  showSystemNamespaces, onShowSystemNamespacesChange,
+  showSystemNamespaces, onShowSystemNamespacesChange, offline,
   onStartTour,
 }: CanvasToolbarProps) {
   const depth = useLearningStore(s => s.depth);
@@ -98,7 +101,18 @@ export default function CanvasToolbar({
       <IconButton icon={RefreshCw} label="Refresh from cluster  (Ctrl+R)" onClick={onRefresh} />
 
       <div className="ml-auto flex items-center gap-2">
-        <ClusterBadge />
+        {offline ? (
+          <Link
+            href="/setup/"
+            title="Download k8n, run it, and connect this page to your cluster"
+            className="flex items-center gap-1.5 rounded border border-emerald-700/70 bg-emerald-950/40 px-2.5 py-1 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-900/40"
+          >
+            <Plug className="h-3.5 w-3.5" />
+            Connect your cluster
+          </Link>
+        ) : (
+          <ClusterBadge />
+        )}
         {applyState === "success" && (
           <span className="flex items-center gap-1.5 text-xs font-medium text-green-400">
             <CheckCircle2 className="h-4 w-4" />
@@ -182,7 +196,14 @@ export default function CanvasToolbar({
 
         <Divider />
 
-        <IconButton icon={Eye} label="Deployed resources" href="/deployed" />
+        <Link
+          href="/deployed"
+          title="Everything running in the cluster, live"
+          className="flex h-8 items-center gap-1.5 rounded px-2 text-xs text-gray-400 transition-colors hover:bg-neutral-800 hover:text-gray-100"
+        >
+          <Eye className="h-4 w-4" />
+          Running
+        </Link>
         <IconButton icon={HelpCircle} label="Help" href="/help" />
       </div>
     </header>

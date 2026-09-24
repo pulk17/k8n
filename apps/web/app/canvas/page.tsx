@@ -693,6 +693,7 @@ function CanvasPageContent() {
         onShowPodsChange={setShowPods}
         showSystemNamespaces={showSystemNamespaces}
         onShowSystemNamespacesChange={setShowSystemNamespaces}
+        offline={offline}
       />
 
       {offline && !offlineNoticeClosed && (
