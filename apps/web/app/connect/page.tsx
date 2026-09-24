@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Server, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import Logo from "../../components/Logo";
 import { connectToContext, errorMessage, fetchContexts, fetchHealth } from "../../lib/api";
 
 export default function ConnectPage() {
@@ -48,9 +49,7 @@ export default function ConnectPage() {
       <div className="max-w-md w-full">
         {/* Logo/Title */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-500 rounded-lg mb-4">
-            <Server className="w-8 h-8 text-white" />
-          </div>
+          <Logo className="mx-auto mb-4 h-16 w-16" />
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             k8n
           </h1>

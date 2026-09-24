@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { DEPTHS, useLearningStore } from "../store/learningStore";
 import ClusterBadge from "./ClusterBadge";
+import Logo from "./Logo";
 
 export type ApplyState = "idle" | "dry-running" | "applying" | "success" | "error";
 
@@ -70,12 +71,7 @@ export default function CanvasToolbar({
   return (
     <header className="absolute inset-x-0 top-0 z-40 flex h-12 items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-[11px] font-bold text-white"
-          aria-hidden
-        >
-          k8n
-        </span>
+        <Logo className="h-7 w-7 flex-shrink-0" />
         <input
           type="text"
           value={graphName}
