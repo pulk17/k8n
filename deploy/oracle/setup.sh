@@ -5,15 +5,24 @@
 # machine with. Nothing is opened to the internet.
 #
 #   curl -fsSLO https://raw.githubusercontent.com/pulk17/k8n/main/deploy/oracle/setup.sh
-#   bash setup.sh            # the version defaults to v0.9.0; pass another to pin it
+#   bash setup.sh            # the version defaults to v0.9.1; pass another to pin it
 #
 # Whoever you share this machine with can do anything to its cluster, and
 # through a privileged pod, to the VM itself. Keep nothing else on it.
 set -euo pipefail
 
-VERSION="${1:-v0.9.0}"
+VERSION="${1:-v0.9.1}"
 PORT=8080
 BIN=/usr/local/bin/k8n
+
+echo "== firewall: let the cluster's own traffic through"
+# Oracle's Ubuntu image rejects everything but SSH in iptables, pods talking to
+# the API server and to each other included. Oracle's own network rules still
+# keep everything but SSH out.
+for chain in "INPUT -i cni0" "FORWARD -i cni0" "FORWARD -o cni0"; do
+  sudo iptables -C $chain -j ACCEPT 2>/dev/null || sudo iptables -I $chain -j ACCEPT
+done
+if command -v netfilter-persistent >/dev/null; then sudo netfilter-persistent save; fi
 
 echo "== k3s: a single-node cluster to show k8n on"
 if ! command -v k3s >/dev/null; then
