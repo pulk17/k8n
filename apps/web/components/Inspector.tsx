@@ -5,7 +5,7 @@ import { Edge, Node } from "reactflow";
 import { AlertTriangle, ArrowRight, GraduationCap, Info, Package, Radio, Sliders, Trash2, X } from "lucide-react";
 import { useCanvasStore } from "../store/canvasStore";
 import { fieldsFor } from "../lib/nodeSchema";
-import { FieldValue, NodeData, fieldValue } from "../lib/graph";
+import { CLUSTER_SCOPED, FieldValue, NodeData, fieldValue } from "../lib/graph";
 import { getConnectionType } from "../lib/connections";
 import { CONNECTION_CONCEPTS, conceptFor } from "../lib/concepts";
 import { CONNECTION_TYPES, darkStatusStyle } from "../lib/constants";
@@ -239,17 +239,19 @@ export default function Inspector({ selectedEdge, issues, onClose }: InspectorPr
               // to retype. The compiler already skips unnamed nodes with a note.
               onChange={v => setField("name", String(v ?? ""))}
             />
-            <FieldInput
-              spec={{
-                key: "namespace",
-                label: "Namespace",
-                type: "text",
-                placeholder: "default",
-                hint: "Which partition of the cluster this object lives in.",
-              }}
-              value={namespace}
-              onChange={v => setField("namespace", v)}
-            />
+            {!CLUSTER_SCOPED.includes(kind) && (
+              <FieldInput
+                spec={{
+                  key: "namespace",
+                  label: "Namespace",
+                  type: "text",
+                  placeholder: "default",
+                  hint: "Which partition of the cluster this object lives in.",
+                }}
+                value={namespace}
+                onChange={v => setField("namespace", v)}
+              />
+            )}
 
             {kind === "HelmRelease" && node.data.chart && (
               <div>

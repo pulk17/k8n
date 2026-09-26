@@ -76,6 +76,9 @@ export function makeNode(
   };
 }
 
+/** Kinds that live across the whole cluster, outside any namespace. */
+export const CLUSTER_SCOPED = ["Namespace", "PersistentVolume", "ClusterRole", "ClusterRoleBinding"];
+
 /** Handle ids. K8sNode renders its sockets with exactly these. */
 export const sourceHandleId = (type: string) => `output-${type}`;
 export const targetHandleId = (type: string) => `input-${type}`;

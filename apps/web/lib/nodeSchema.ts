@@ -173,6 +173,14 @@ export const NODE_SCHEMA: Record<string, FieldSpec[]> = {
     { key: "host", label: "Host", type: "text", placeholder: "example.com" },
     { key: "path", label: "Path", type: "text", placeholder: "/" },
     {
+      key: "routes",
+      label: "Routes",
+      type: "textarea",
+      rows: 2,
+      placeholder: "api=/api\nfrontend=/",
+      hint: "When it connects to more than one Service: service=path per line.",
+    },
+    {
       key: "pathType",
       label: "Path Type",
       type: "select",

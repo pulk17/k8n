@@ -68,6 +68,7 @@ func ImportManifest() gin.HandlerFunc {
 
 func buildImportGraph(objects []*unstructured.Unstructured) ImportResponse {
 	resp := ImportResponse{Nodes: []ImportedNode{}, Edges: []ImportedEdge{}, Notes: []CompileNote{}}
+	var sources []*unstructured.Unstructured
 
 	for _, obj := range objects {
 		if obj.GetName() == "" {
@@ -78,9 +79,12 @@ func buildImportGraph(objects []*unstructured.Unstructured) ImportResponse {
 			continue
 		}
 		ns := obj.GetNamespace()
-		if ns == "" {
+		if isClusterScoped(obj.GetKind()) {
+			ns = ""
+		} else if ns == "" {
 			ns = "default"
 		}
+		sources = append(sources, obj)
 		resp.Nodes = append(resp.Nodes, ImportedNode{
 			ID:        fmt.Sprintf("%s/%s/%s", obj.GetKind(), ns, obj.GetName()),
 			Kind:      obj.GetKind(),
@@ -92,7 +96,40 @@ func buildImportGraph(objects []*unstructured.Unstructured) ImportResponse {
 
 	attachMountPaths(resp.Nodes, objects)
 	resp.Edges = importEdges(resp.Nodes, objects)
+	keepWhatTheCanvasCannotHold(resp, sources)
 	return resp
+}
+
+// keepWhatTheCanvasCannotHold compiles each imported node straight back and
+// stores on it what did not survive, for compile to restore (see preserve.go).
+func keepWhatTheCanvasCannotHold(resp ImportResponse, sources []*unstructured.Unstructured) {
+	g := importedGraph(resp)
+	r := newResolver(g)
+	for i, n := range g.Nodes {
+		compiled, err := buildAuthoredObject(n, r)
+		if err != nil || compiled == nil {
+			continue
+		}
+		if parts := lostParts(sources[i].Object, compiled); len(parts) > 0 {
+			resp.Nodes[i].Fields[preservedKey] = parts
+		}
+	}
+}
+
+// importedGraph is the graph the canvas builds from an import.
+func importedGraph(resp ImportResponse) Graph {
+	var g Graph
+	for _, n := range resp.Nodes {
+		data := map[string]interface{}{"kind": n.Kind, "name": n.Name, "namespace": n.Namespace}
+		for k, v := range n.Fields {
+			data[k] = v
+		}
+		g.Nodes = append(g.Nodes, GraphNode{ID: n.ID, Data: data})
+	}
+	for _, e := range resp.Edges {
+		g.Edges = append(g.Edges, GraphEdge{ID: e.Source + "->" + e.Target, Source: e.Source, Target: e.Target})
+	}
+	return g
 }
 
 // attachMountPaths copies each claim's mount path onto its PVC node.
@@ -201,13 +238,30 @@ func fieldsFromObject(obj *unstructured.Unstructured) map[string]interface{} {
 		if len(rules) > 0 {
 			if rule, ok := rules[0].(map[string]interface{}); ok {
 				set("host", asString(rule["host"]))
-				if p := firstIngressPath(rule); p != nil {
+				if paths := ingressPaths(rule); len(paths) > 0 {
+					p := paths[0]
 					set("path", asString(p["path"]))
 					set("pathType", asString(p["pathType"]))
-					if svc := ingressBackendService(p); svc != nil {
-						set("port", asInt(nestedIn(svc, "port", "number")))
+					if len(paths) == 1 {
+						if svc := ingressBackendService(p); svc != nil {
+							set("port", asInt(nestedIn(svc, "port", "number")))
+						}
 					}
 				}
+			}
+			// ponytail: one host per Ingress on the canvas; the routes of every
+			// rule are kept, their other hosts are not.
+			var routes []string
+			for _, r := range rules {
+				rule, _ := r.(map[string]interface{})
+				for _, p := range ingressPaths(rule) {
+					if svc := ingressBackendService(p); svc != nil {
+						routes = append(routes, asString(svc["name"])+"="+asString(p["path"]))
+					}
+				}
+			}
+			if len(routes) > 1 {
+				set("routes", strings.Join(routes, "\n"))
 			}
 		}
 		if tls, _, _ := unstructured.NestedSlice(obj.Object, "spec", "tls"); len(tls) > 0 {
@@ -331,10 +385,10 @@ func podFields(obj *unstructured.Unstructured, f map[string]interface{}, path ..
 		f["containerPort"] = int64(ctr.Ports[0].ContainerPort)
 	}
 	if len(ctr.Command) > 0 {
-		f["command"] = strings.Join(ctr.Command, " ")
+		f["command"] = joinArgs(ctr.Command)
 	}
 	if len(ctr.Args) > 0 {
-		f["args"] = strings.Join(ctr.Args, " ")
+		f["args"] = joinArgs(ctr.Args)
 	}
 	for key, qty := range map[string]string{
 		"cpuRequest":    ctr.Resources.Requests.Cpu().String(),
@@ -433,7 +487,7 @@ func importEdges(nodes []ImportedNode, objects []*unstructured.Unstructured) []I
 				if !ok {
 					continue
 				}
-				if p := firstIngressPath(rule); p != nil {
+				for _, p := range ingressPaths(rule) {
 					if svc := ingressBackendService(p); svc != nil {
 						link(n.ID, ref("Service", n.Namespace, asString(svc["name"])))
 					}
@@ -550,13 +604,15 @@ func asInt(v interface{}) int64 {
 	return 0
 }
 
-func firstIngressPath(rule map[string]interface{}) map[string]interface{} {
-	paths, found, _ := unstructured.NestedSlice(rule, "http", "paths")
-	if !found || len(paths) == 0 {
-		return nil
+func ingressPaths(rule map[string]interface{}) []map[string]interface{} {
+	paths, _, _ := unstructured.NestedSlice(rule, "http", "paths")
+	var out []map[string]interface{}
+	for _, p := range paths {
+		if m, ok := p.(map[string]interface{}); ok {
+			out = append(out, m)
+		}
 	}
-	p, _ := paths[0].(map[string]interface{})
-	return p
+	return out
 }
 
 func ingressBackendService(path map[string]interface{}) map[string]interface{} {
@@ -565,6 +621,25 @@ func ingressBackendService(path map[string]interface{}) map[string]interface{} {
 		return nil
 	}
 	return svc
+}
+
+// joinArgs is the inverse of splitArgs: an argument with a space or a quote in
+// it is quoted, so `sh -c "while true; do ...; done"` stays three arguments.
+func joinArgs(args []string) string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		switch {
+		case a != "" && !strings.ContainsAny(a, " \t\r\n'\""):
+			out[i] = a
+		case !strings.Contains(a, "'"):
+			out[i] = "'" + a + "'"
+		default:
+			// ponytail: an argument holding both quote kinds cannot be written
+			// back; splitArgs has no escapes.
+			out[i] = `"` + a + `"`
+		}
+	}
+	return strings.Join(out, " ")
 }
 
 func joinKeyValues(data map[string]string) string {

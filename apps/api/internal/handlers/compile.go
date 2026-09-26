@@ -126,6 +126,9 @@ func buildObject(n GraphNode, r *resolver) (map[string]interface{}, *CompileNote
 		return buildImportedObject(n)
 	}
 	obj, err := buildAuthoredObject(n, r)
+	if parts := sliceField(n.Data, preservedKey); obj != nil && len(parts) > 0 {
+		obj = restoreParts(obj, parts)
+	}
 	return obj, nil, err
 }
 
@@ -768,39 +771,47 @@ func buildServiceSpec(n GraphNode, r *resolver) map[string]interface{} {
 // buildIngressSpec resolves its backend from the Service edge rather than
 // pointing at a service named after the Ingress itself.
 func buildIngressSpec(n GraphNode, r *resolver) map[string]interface{} {
-	backendName := ""
-	backendPort := intField(n.Data, "port", 0)
-
-	if targets := r.targetsOf(n.ID, "Service"); len(targets) > 0 {
-		svc := targets[0]
-		backendName = svc.Name()
-		if backendPort == 0 {
-			backendPort = intField(svc.Data, "port", 80)
-		}
-	} else {
-		backendName = strFieldOr(n.Data, "serviceName", n.Name())
-	}
-	if backendPort == 0 {
-		backendPort = 80
-	}
-
 	host := strField(n.Data, "host")
 	path := strFieldOr(n.Data, "path", "/")
-
-	httpRule := map[string]interface{}{
-		"paths": []map[string]interface{}{
-			{
-				"path":     path,
-				"pathType": strFieldOr(n.Data, "pathType", "Prefix"),
-				"backend": map[string]interface{}{
-					"service": map[string]interface{}{
-						"name": backendName,
-						"port": map[string]interface{}{"number": backendPort},
-					},
+	pathType := strFieldOr(n.Data, "pathType", "Prefix")
+	backend := func(name string, port int) map[string]interface{} {
+		if port == 0 {
+			port = 80
+		}
+		return map[string]interface{}{
+			"path":     path,
+			"pathType": pathType,
+			"backend": map[string]interface{}{
+				"service": map[string]interface{}{
+					"name": name,
+					"port": map[string]interface{}{"number": port},
 				},
 			},
-		},
+		}
 	}
+
+	var paths []map[string]interface{}
+	switch targets := r.targetsOf(n.ID, "Service"); len(targets) {
+	case 0:
+		paths = append(paths, backend(strFieldOr(n.Data, "serviceName", n.Name()), intField(n.Data, "port", 0)))
+	case 1:
+		port := intField(n.Data, "port", 0)
+		if port == 0 {
+			port = intField(targets[0].Data, "port", 80)
+		}
+		paths = append(paths, backend(targets[0].Name(), port))
+	default:
+		// One path per connected Service; routes says which path goes where.
+		routes := parseKeyValues(strField(n.Data, "routes"), "")
+		for _, svc := range targets {
+			p := backend(svc.Name(), intField(svc.Data, "port", 80))
+			if route, ok := routes[svc.Name()]; ok && route != "" {
+				p["path"] = route
+			}
+			paths = append(paths, p)
+		}
+	}
+	httpRule := map[string]interface{}{"paths": paths}
 
 	rule := map[string]interface{}{"http": httpRule}
 	if host != "" {

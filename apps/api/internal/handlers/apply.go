@@ -131,6 +131,10 @@ func ApplyManifests(ctx context.Context, client *k8s.Client, manifest string, is
 			namespacesToCreate[ns] = true
 		}
 	}
+	// A dry run cannot create a namespace, so nothing inside a new one could be
+	// checked. A new namespace is empty, so its objects are checked in default.
+	// ponytail: a quota or policy in default would apply to that check too.
+	fresh := map[string]bool{}
 	for ns := range namespacesToCreate {
 		opts := metav1.CreateOptions{}
 		if isDryRun {
@@ -142,12 +146,17 @@ func ApplyManifests(ctx context.Context, client *k8s.Client, manifest string, is
 		if err != nil && !strings.Contains(err.Error(), "already exists") {
 			return nil, nil, fmt.Errorf("failed to create namespace %s: %w", ns, err)
 		}
+		fresh[ns] = err == nil
 	}
 
 	var applied []string
 	var errorsList []ErrorItem
 
 	for _, obj := range objects {
+		if isDryRun && fresh[obj.GetNamespace()] {
+			obj = obj.DeepCopy()
+			obj.SetNamespace("default")
+		}
 		dr, err := resourceClient(client, mapper, obj)
 		if err != nil {
 			errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: err.Error()})
@@ -173,7 +182,13 @@ func ApplyManifests(ctx context.Context, client *k8s.Client, manifest string, is
 		}
 
 		if _, err = dr.Patch(ctx, obj.GetName(), types.ApplyPatchType, data, opts); err != nil {
-			errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: err.Error()})
+			msg := err.Error()
+			// A Job's pod template, a selector, a claim template: set once. The
+			// raw error is the whole object dumped as JSON, then "field is immutable".
+			if strings.Contains(msg, "field is immutable") {
+				msg = fmt.Sprintf("%s %s already exists, and Kubernetes does not allow this change to it in place. Delete it on the Deployed page, then deploy again.", obj.GetKind(), obj.GetName())
+			}
+			errorsList = append(errorsList, ErrorItem{Resource: obj.GetName(), Message: msg})
 			continue
 		}
 

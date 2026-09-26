@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useCanvasStore } from "../store/canvasStore";
 import { inputsFor, outputsFor, HandleSpec } from "../lib/connections";
-import { FieldValue, NodeData, fieldValue } from "../lib/graph";
+import { CLUSTER_SCOPED, FieldValue, NodeData, fieldValue } from "../lib/graph";
 import { fieldsFor } from "../lib/nodeSchema";
 import { darkStatusStyle } from "../lib/constants";
 import FieldInput from "./FieldInput";
@@ -236,11 +236,13 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
           className="custom-scrollbar nodrag nowheel max-h-[360px] space-y-2 overflow-y-auto rounded-b-md bg-neutral-900 px-3 py-2"
           onDoubleClick={e => e.stopPropagation()}
         >
-          <FieldInput
-            spec={{ key: "namespace", label: "Namespace", type: "text", placeholder: "default" }}
-            value={data.namespace ?? "default"}
-            onChange={v => setField("namespace", v)}
-          />
+          {!CLUSTER_SCOPED.includes(data.kind) && (
+            <FieldInput
+              spec={{ key: "namespace", label: "Namespace", type: "text", placeholder: "default" }}
+              value={data.namespace ?? "default"}
+              onChange={v => setField("namespace", v)}
+            />
+          )}
 
           {data.kind === "HelmRelease" && data.chart && (
             <div>
@@ -280,7 +282,7 @@ export default memo(function K8sNode({ data, id, selected }: NodeProps<NodeData>
           style={{ minHeight: nodeMinHeight(inputs.length, outputs.length) - HEADER_HEIGHT }}
         >
           <div className="flex items-center justify-between gap-2 text-[10px]">
-            <span className="truncate font-mono text-gray-500">{data.namespace || "default"}</span>
+            <span className="truncate font-mono text-gray-500">{CLUSTER_SCOPED.includes(data.kind) ? "cluster-wide" : data.namespace || "default"}</span>
             <span className={`${statusStyle.text} flex-shrink-0 font-medium`}>{data.status}</span>
           </div>
           <Summary data={data} />

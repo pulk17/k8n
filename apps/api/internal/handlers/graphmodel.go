@@ -164,6 +164,8 @@ func intField(m map[string]interface{}, key string, def int) int {
 	switch v := m[key].(type) {
 	case float64:
 		return int(v)
+	case int64:
+		return int(v)
 	case int:
 		return v
 	case string:
