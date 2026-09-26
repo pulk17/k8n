@@ -115,6 +115,8 @@ func main() {
 			reply(w, http.StatusConflict, map[string]string{"error": "It is not your turn, or your turn has passed."})
 			return
 		}
+		// Readable by the page, so the app asks for its countdown only in a session.
+		http.SetCookie(w, &http.Cookie{Name: "k8n_demo_session", Value: "1", Path: "/", Secure: true, SameSite: http.SameSiteLaxMode})
 		reply(w, http.StatusOK, map[string]string{"go": "/"})
 	})
 	mux.HandleFunc("POST /demo/leave", func(w http.ResponseWriter, r *http.Request) {

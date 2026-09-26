@@ -4,15 +4,16 @@ import { useEffect, useState } from "react";
 import { Clock, LogOut } from "lucide-react";
 
 /**
- * The public demo's countdown. Only the demo's front door answers
- * /demo/session, so everywhere else this asks once and renders nothing.
- * Asking also tells the door the tab is still open.
+ * The public demo's countdown. The demo's front door sets a cookie when a
+ * session starts; without it this asks nothing and renders nothing. Asking
+ * also tells the door the tab is still open.
  */
 export default function DemoBar() {
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    if (!document.cookie.includes("k8n_demo_session=")) return;
     let inDemo = false;
     const check = async () => {
       const res = await fetch("/demo/session", { credentials: "same-origin", cache: "no-store" }).catch(() => null);

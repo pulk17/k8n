@@ -143,7 +143,8 @@ let rendered = "";
 for (let i = 0; i < 40; i++) {
   await sleep(1500);
   rendered = await dockText();
-  if (/object/i.test(rendered) || /could not render/i.test(rendered)) break;
+  // Not "object": the chart's own description says that before any render.
+  if (/\b(Deployment|StatefulSet|Service)\b/.test(rendered) || /could not render/i.test(rendered)) break;
 }
 check("the chart is rendered without asking", /object/i.test(rendered), rendered.slice(0, 120).replace(/\s+/g, " "));
 // Listed as the objects it creates; each opens to its own YAML.
