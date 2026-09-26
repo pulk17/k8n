@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@fontsource-variable/inter";
 import "./globals.css";
+import DemoBar from "../components/DemoBar";
 import Dialogs from "../components/Dialogs";
 import PairGate from "../components/PairGate";
 
@@ -23,6 +24,7 @@ export default function RootLayout({
         {children}
         <Dialogs />
         <PairGate />
+        <DemoBar />
       </body>
     </html>
   );

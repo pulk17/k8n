@@ -1,24 +1,64 @@
-# A private k8n demo on Oracle Cloud's free tier
+# A public k8n demo on Oracle Cloud's free tier
 
-A throwaway cluster with k8n on it, reachable only by the people you share the
-machine with. Nothing listens on the internet: k8n binds to localhost and
-Tailscale is the only way in.
+Anyone with the link can try k8n on a real cluster, one person at a time.
+Everyone else waits in a queue, and each visitor gets a clean cluster and a
+fresh k8n. When their session ends, everything they made is deleted.
 
-## 1. Create the VM (once)
+```
+visitor ── https ──> Tailscale Funnel ──> k8n-demo (queue, sessions) ──> k8n ──> k3s
+                                           127.0.0.1:8081                 :8090   visitor account only
+```
 
-In the Oracle Cloud console: **Compute → Instances → Create instance**.
+## What visitors are told before they join
 
-- **Image:** Canonical Ubuntu 24.04 (the aarch64 build).
-- **Shape:** Ampere, `VM.Standard.A1.Flex` — 2 OCPUs and 12 GB is plenty, and
-  within the Always Free allowance.
-- **Networking:** the defaults. Do not add ingress rules; only SSH needs to be
-  open, and Tailscale connects outwards.
-- **SSH keys:** add your public key.
+The waiting page (`/demo/`) lists the rules, and a visitor must tick that they
+understand everything is deleted:
 
-Free Ampere capacity runs out in some regions; if creating fails with "out of
-capacity", try another availability domain or try again later.
+- **One session at a time**, up to 20 minutes, with a countdown bar and an End button.
+- **Closing the tab ends the session** after 3 minutes.
+- **Keep the waiting page open.** A closed page loses its place after 3 minutes.
+  The next person gets 2 minutes to press Start (the title flashes and a
+  notification is sent), or the turn passes on. Wait estimates come from real
+  session lengths. At most 30 people can wait.
+- **Everything is deleted at the end:** their namespaces, what they added to
+  `default`, and k8n's own data (saved workflows, history, any AI key).
+- **What the machine can take**, read from the cluster (cores, memory, pods),
+  and what fits and what does not.
+- **What is switched off:** internet from pods, "Open in browser", privileged
+  pods, cluster-wide installs, and Ingress serving.
+
+## What keeps a visitor from harming the machine or the next person
+
+| Layer | What it does |
+|---|---|
+| RBAC (`visitor.yaml`) | Anything inside namespaces; create and delete namespaces; read the rest. No CRDs, ClusterRoles, webhooks, impersonation or token minting. |
+| Admission policy (`visitor.yaml`) | System namespaces and the `default` namespace object are read-only; pod-security labels cannot be changed; no exec into system pods. |
+| k3s pod security | `baseline` everywhere but kube-system: no privileged pods, host paths, host network or host ports. |
+| k3s | No Traefik, ServiceLB or helm-controller. 60 pods, 1024 processes per pod, 0.5 CPU and 1.5 GB kept for the host. |
+| iptables | Pods cannot reach the internet or Oracle's metadata service; k8n cannot reach the metadata service. |
+| k8n-demo | The only thing reachable from outside. It forwards to k8n only with the current session's cookie (`SameSite=Lax`). k8n listens on localhost with a clean home and no API keys each session. |
+
+`setup.sh` tests the sandbox before opening anything, and stops if a check fails.
+
+Known limits: the queue lives in memory (a restart empties it and resets the
+cluster); a visitor can read Secrets cluster-wide; a script can hold up to
+`-max-queue` places.
+
+## 1. Create the VM
+
+Oracle console, **Compute → Instances → Create instance**:
+
+- **Image:** Canonical Ubuntu 24.04 (not Minimal).
+- **Shape:** Ampere `VM.Standard.A1.Flex`, 2 OCPUs and 12 GB (up to 4 and 24 are free).
+- **Networking:** defaults, with a public IPv4 address. No ingress rules.
+- **SSH keys:** paste your public key.
+- **Advanced options → Management:** instance metadata service **version 2 only**.
+
+If it says "Out of host capacity", try another availability domain or later.
 
 ## 2. Run the setup
+
+You need a free [Tailscale](https://tailscale.com) account.
 
 ```bash
 ssh ubuntu@<the VM's public IP>
@@ -26,25 +66,16 @@ curl -fsSLO https://raw.githubusercontent.com/pulk17/k8n/main/deploy/oracle/setu
 bash setup.sh
 ```
 
-It installs k3s, the k8n release binary (checked against the release's
-SHA256SUMS), and Tailscale. The first `tailscale up` prints a link: open it and
-log in with your Tailscale account. If `tailscale serve` asks to enable HTTPS
-for your tailnet, allow it.
+It prints a Tailscale login link, asks once to allow Funnel, checks the
+sandbox, and prints the public address.
 
-At the end it prints the pairing link, on the machine's Tailscale name.
-
-## 3. Let someone in
-
-Tailscale admin console → **Machines** → this VM → **Share**. They get this one
-machine, not your tailnet. Send them the link.
-
-## Know what you are handing over
-
-Whoever has the link can do anything to that cluster — and a privileged pod is
-root on the VM. That is fine for a throwaway demo box; it is why nothing else
-should live on it.
+## 3. Run it
 
 ```bash
-sudo systemctl stop k8n && sudo tailscale serve reset   # close it
-sudo journalctl -u k8n -f                                # watch it
+sudo journalctl -u k8n-demo -f                                   # joins, starts, ends, resets
+sudo tailscale funnel reset && sudo systemctl stop k8n-demo      # close it
+sudo systemctl start k8n-demo && sudo tailscale funnel --bg 8081 # open it again
 ```
+
+Limits live in `ExecStart` of `/etc/systemd/system/k8n-demo.service`:
+`-session 20m -idle 3m -claim 2m -stale 3m -max-queue 30`.

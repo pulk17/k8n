@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>k8n live demo</title>
+<style>
+  :root { color-scheme: dark; --bg:#0a0b0f; --card:#14161d; --line:#262a35; --text:#e6e8ee; --dim:#9aa0ad; --accent:#818cf8; --ok:#34d399; --warn:#fbbf24; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom: 28px; }
+  header svg { height: 34px; width: auto; color: var(--text); }
+  header span { color: var(--dim); }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 15px; margin: 28px 0 10px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  p { margin: 0 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  #state { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  #detail { color: var(--dim); min-height: 1.5em; }
+  .big { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  button { font: inherit; border-radius: 8px; padding: 10px 18px; cursor: pointer; border: 1px solid var(--line); background: #1c1f28; color: var(--text); }
+  button.go { background: var(--accent); border-color: var(--accent); color: #0a0b0f; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top: 16px; }
+  label { display:flex; gap:10px; align-items:flex-start; margin-top: 16px; color: var(--text); }
+  label input { margin-top: 4px; width: 16px; height: 16px; accent-color: var(--accent); }
+  ul { margin: 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  li b { color: var(--text); }
+  .dim { color: var(--dim); }
+  .turn { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(129,140,248,.18); }
+  .note { color: var(--warn); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <svg viewBox="0 0 104 64" role="img" aria-label="k8n">
+      <defs>
+        <linearGradient id="g" x1="0" y1="10" x2="0" y2="56" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#c4b5fd"/><stop offset=".5" stop-color="#818cf8"/><stop offset="1" stop-color="#38bdf8"/>
+        </linearGradient>
+        <mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="104" height="64">
+          <rect width="104" height="64" fill="#fff"/><circle cx="50" cy="30.6" r="8.2" fill="#000"/>
+        </mask>
+      </defs>
+      <g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 13.5V53M12 41L27 28M18.5 35.5L27.5 53"/><path d="M74 53V39A8 8 0 0 1 90 39V53"/>
+      </g>
+      <g mask="url(#m)" fill="none" stroke="url(#g)" stroke-width="6">
+        <circle cx="50" cy="22" r="8.5"/><circle cx="50" cy="42" r="11"/>
+      </g>
+      <circle cx="50" cy="30.6" r="5.4" fill="currentColor"/>
+    </svg>
+    <span>live demo</span>
+  </header>
+
+  <h1>Try k8n on a real Kubernetes cluster</h1>
+  <p class="dim">One person at a time gets the whole cluster. Everyone else waits in a short queue. To use k8n with your own cluster, <a href="https://k8n.pages.dev/setup/">set it up on your machine</a>. No queue, and nothing gets deleted.</p>
+
+  <div class="card" id="box" style="margin-top:20px">
+    <div id="state">Loading…</div>
+    <div id="detail"></div>
+    <div class="big" id="clock" hidden></div>
+    <label id="agree-row"><input type="checkbox" id="agree"> <span>I have read what this demo is and is not, below, and I understand that <b>everything I make is deleted when my session ends</b>.</span></label>
+    <div class="row">
+      <button class="go" id="join" disabled>Join the queue</button>
+      <button class="go" id="start" hidden>Start my session</button>
+      <button id="leave" hidden>Leave the queue</button>
+    </div>
+  </div>
+
+  <h2>Before you join</h2>
+  <ul>
+    <li><b>Everything is deleted when your session ends.</b> That covers your apps, namespaces, Helm releases, saved workflows and history, and any AI key you enter. To keep your work, copy or download the YAML before the end.</li>
+    <li><b>A session lasts up to {{.Session}}.</b> A bar at the bottom of the app counts down, and you can end it early.</li>
+    <li><b>Closing the tab ends your session</b> after about {{.Idle}}, so the next person is not kept waiting.</li>
+    <li><b>Keep this page open while you wait.</b> If you close it, you lose your place after a few minutes. When your turn comes you have {{.Claim}} to press Start; this page changes its title and, if you allow it, sends a notification.</li>
+    <li><b>Do not put anything private in it:</b> no real passwords, keys or company data. The person who runs this server can see its logs.</li>
+  </ul>
+
+  <h2>What the server can handle</h2>
+  <p>This runs for free on one small Oracle Cloud machine. Your session gets {{.Machine}}.</p>
+  <ul>
+    <li><b>Fits well:</b> a few Deployments and Services, ConfigMaps and Secrets, a database like postgres or redis, Jobs and CronJobs, autoscalers, the templates, and small Helm charts such as nginx or redis.</li>
+    <li><b>Will not fit:</b> monitoring stacks like Prometheus and Grafana, Kafka, Elasticsearch, or anything asking for many gigabytes of memory. Those pods wait as Pending.</li>
+    <li><b>The first start of an image is slow,</b> because the server downloads it. Images pulled before start in seconds.</li>
+  </ul>
+
+  <h2>What is switched off, and why</h2>
+  <ul>
+    <li><b>Apps cannot reach the internet.</b> They can reach each other inside the cluster, and images still download.</li>
+    <li><b>"Open in browser" does not reach you here.</b> Tunnels open on the server, not on your computer. Use logs, the terminal into a pod, and the live view instead.</li>
+    <li><b>No privileged pods, host paths or host ports,</b> and the cluster's own namespaces are read-only. Charts that install cluster-wide pieces, such as CRDs or ClusterRoles, are refused.</li>
+    <li><b>Ingress objects are accepted but not served:</b> there is no ingress controller on this cluster.</li>
+    <li><b>It is best effort:</b> a free machine with no guarantees. If it is down, try later, or run k8n yourself.</li>
+  </ul>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = s => { s = Math.max(0, Math.round(s)); const m = Math.floor(s / 60); return m >= 1 ? `${m} min` : `${s} s`; };
+const clock = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const endedText = {
+  "ran out of time": "Your session reached its time limit. Everything you made has been deleted.",
+  "closed": "Your session ended because its tab was closed. Everything you made has been deleted.",
+  "ended it": "You ended your session. Everything you made has been deleted.",
+  "missed its turn": "Your turn passed while you were away. You can join again.",
+};
+let status = null, title = document.title, flash = null;
+
+async function call(path, method = "GET") {
+  const r = await fetch(path, { method, credentials: "same-origin", cache: "no-store" });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok && body.error) throw new Error(body.error);
+  return body;
+}
+
+function render() {
+  const s = status;
+  const inQueue = s.state === "waiting" || s.state === "your-turn";
+  $("box").classList.toggle("turn", s.state === "your-turn");
+  $("agree-row").hidden = inQueue;
+  $("join").hidden = inQueue;
+  $("leave").hidden = !inQueue;
+  $("start").hidden = s.state !== "your-turn";
+  $("clock").hidden = s.state !== "your-turn";
+  $("join").disabled = !$("agree").checked;
+  if (s.state === "your-turn") {
+    $("state").textContent = "It is your turn";
+    $("detail").textContent = "Press Start before the timer runs out, or the next person goes ahead.";
+    $("clock").textContent = clock((Date.parse(s.deadline) - Date.now()) / 1000);
+  } else if (s.state === "waiting") {
+    $("state").textContent = s.position === 1 ? "You are next" : `You are number ${s.position} in the queue`;
+    $("detail").textContent = s.resetting && s.position === 1
+      ? "The cluster is being cleaned for you. About a minute."
+      : `About ${fmt(s.waitSeconds)} to wait. Keep this page open.`;
+  } else if (s.state === "active") {
+    location.href = "/";
+  } else {
+    $("state").textContent = s.ended ? endedText[s.ended] || "Your session has ended." : s.busy ? "Someone is using the demo" : s.waiting ? "Someone is about to start" : s.resetting ? "Getting a clean cluster ready" : "The demo is free";
+    $("detail").textContent = s.waiting ? `${s.waiting} ${s.waiting === 1 ? "person" : "people"} waiting.` : s.busy || s.resetting ? "Join and you are next." : "Join and you can start right away.";
+  }
+  if (s.state === "your-turn" && !flash) {
+    flash = setInterval(() => { document.title = document.title === title ? "Your turn: k8n demo" : title; }, 1000);
+    if (window.Notification?.permission === "granted") new Notification("k8n demo", { body: "It is your turn. Press Start within a couple of minutes." });
+  } else if (s.state !== "your-turn" && flash) {
+    clearInterval(flash); flash = null; document.title = title;
+  }
+}
+
+async function poll() {
+  try { status = await call("/demo/status"); render(); } catch {}
+}
+
+$("agree").onchange = () => { $("join").disabled = !$("agree").checked; };
+$("join").onclick = async () => {
+  try { status = await call("/demo/join", "POST"); render(); } catch (e) { $("detail").textContent = e.message; }
+  if (window.Notification?.permission === "default") Notification.requestPermission();
+};
+$("leave").onclick = async () => { await call("/demo/leave", "POST"); poll(); };
+$("start").onclick = async () => {
+  try { await call("/demo/start", "POST"); location.href = "/"; } catch (e) { $("detail").textContent = e.message; poll(); }
+};
+poll();
+setInterval(poll, 3000);
+setInterval(() => status?.state === "your-turn" && render(), 1000);
+</script>
+</body>
+</html>

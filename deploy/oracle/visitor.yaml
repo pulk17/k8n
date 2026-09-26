@@ -1,0 +1,129 @@
+# Who a demo visitor is on the cluster, and what they cannot do.
+#
+# The visitor gets everything inside namespaces, and may make and delete
+# namespaces, but nothing cluster-wide: no CRDs, no ClusterRoles, no webhooks,
+# no impersonating, no minting tokens. RBAC stops granting a role with more
+# than you hold, so they cannot hand themselves more. The policy at the end
+# keeps the system namespaces read-only and pod security from being lowered;
+# pod security itself (baseline: no privileged pods, host paths, host ports)
+# is set cluster-wide in k3s's admission config.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8n-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: visitor
+  namespace: k8n-demo
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: visitor-token
+  namespace: k8n-demo
+  annotations:
+    kubernetes.io/service-account.name: visitor
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8n-demo-visitor
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/exec
+      - pods/portforward
+      - services
+      - configmaps
+      - secrets
+      - persistentvolumeclaims
+      - serviceaccounts
+      - replicationcontrollers
+      - limitranges
+      - resourcequotas
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+  - apiGroups: [""]
+    resources: [namespaces]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps, batch, autoscaling, policy]
+    resources: ["*"]
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+  # Not "*": the group also holds cluster-wide objects (service IP ranges).
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete, deletecollection]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingressclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [nodes, persistentvolumes, events, endpoints]
+    verbs: [get, list, watch]
+  - apiGroups:
+      - events.k8s.io
+      - discovery.k8s.io
+      - storage.k8s.io
+      - apiextensions.k8s.io
+      - metrics.k8s.io
+      - coordination.k8s.io
+      - scheduling.k8s.io
+      - node.k8s.io
+    resources: ["*"]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterroles, clusterrolebindings]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8n-demo-visitor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8n-demo-visitor
+subjects:
+  - kind: ServiceAccount
+    name: visitor
+    namespace: k8n-demo
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: k8n-demo-visitor
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE, CONNECT]
+        resources: ["*/*"]
+  matchConditions:
+    - name: is-visitor
+      expression: request.userInfo.username == "system:serviceaccount:k8n-demo:visitor"
+  validations:
+    - expression: >-
+        !(request.namespace in ["kube-system", "kube-public", "kube-node-lease", "k8n-demo"]) &&
+        !(request.resource.resource == "namespaces" && request.name in ["default", "kube-system", "kube-public", "kube-node-lease", "k8n-demo"])
+      message: The demo keeps the cluster's own namespaces read-only.
+    - expression: >-
+        request.resource.resource != "namespaces" || request.operation == "DELETE" ||
+        !has(object.metadata.labels) ||
+        !object.metadata.labels.exists(k, k.startsWith("pod-security.kubernetes.io/"))
+      message: Pod security is fixed in the demo.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: k8n-demo-visitor
+spec:
+  policyName: k8n-demo-visitor
+  validationActions: [Deny]

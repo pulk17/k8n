@@ -72,6 +72,11 @@ jobs:
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
               go build -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" \
               -o "../../dist/k8n-mcp-$os-$arch$ext" ./cmd/k8n-mcp
+            # The public demo's front door (deploy/oracle), which runs on Linux.
+            if [ "$os" = "linux" ]; then
+              CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+                go build -trimpath -ldflags="-s -w" -o "../../dist/k8n-demo-$os-$arch" ./cmd/k8n-demo
+            fi
           done
 
       - name: Checksums
@@ -97,6 +102,7 @@ jobs:
             | Linux | `k8n-linux-amd64`, `k8n-linux-arm64` |
 
             `k8n-mcp-*` is the stdio MCP server, for AI clients that start it themselves.
+            `k8n-demo-*` runs a public demo with a queue; see `deploy/oracle`. You do not need it to use k8n.
             `SHA256SUMS.txt` has a checksum for every file.
 
             macOS and Windows will warn that the binary is unsigned: this project has no
