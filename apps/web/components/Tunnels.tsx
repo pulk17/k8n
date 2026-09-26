@@ -1,29 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, X } from "lucide-react";
-import { Forward, errorMessage, fetchForwards, stopForward } from "../lib/api";
+import { errorMessage, stopForward } from "../lib/api";
 import { notifyError } from "../lib/dialog";
-import { TUNNELS_CHANGED } from "./ResourceActions";
+import { tunnelsChanged, useForwards } from "./ResourceActions";
 
 /** The tunnels k8n has open, so none is forgotten running in the background. */
 export default function Tunnels() {
-  const [forwards, setForwards] = useState<Forward[]>([]);
-
-  const refresh = useCallback(() => {
-    fetchForwards().then(setForwards).catch(() => setForwards([]));
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    window.addEventListener(TUNNELS_CHANGED, refresh);
-    // A tunnel closes on its own when its pod goes away.
-    const t = setInterval(refresh, 10000);
-    return () => {
-      window.removeEventListener(TUNNELS_CHANGED, refresh);
-      clearInterval(t);
-    };
-  }, [refresh]);
+  const forwards = useForwards();
 
   if (forwards.length === 0) return null;
 
@@ -52,7 +36,7 @@ export default function Tunnels() {
               onClick={() =>
                 stopForward(f.id)
                   .catch(err => notifyError(errorMessage(err)))
-                  .finally(refresh)
+                  .finally(tunnelsChanged)
               }
               className="ml-auto inline-flex items-center gap-1 text-gray-500 hover:text-red-600"
               aria-label={`Stop tunnel to ${f.name}`}

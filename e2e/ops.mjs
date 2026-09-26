@@ -223,13 +223,26 @@ const click = label =>
 await expand("creds");
 await sleep(400);
 check("an expanded Secret offers Reveal values", await click("Reveal values"));
-await sleep(1000);
+await tab.waitForFunction(() => document.body.innerText.includes("hunter2"), { timeout: 10000 }).catch(() => {});
 check("and shows them", (await text()).includes("hunter2"));
 await expand("web");
 await sleep(400);
 const t = await text();
 check("an expanded Deployment offers Scale, Restart and Roll back", t.includes("Scale") && t.includes("Restart") && t.includes("Roll back"));
-check("an expanded Service offers Open in browser", t.includes("Open in browser"));
+const openButtons = () => tab.evaluate(() => [...document.querySelectorAll("button")].filter(b => b.textContent.trim() === "Open in browser").length);
+check("an expanded Service offers Open in browser", (await openButtons()) > 0);
+// A tunnel opened from a row and closed from the bar at the top must close in
+// the row too; it used to keep showing it, and its Stop then failed.
+const before = await openButtons();
+await click("Open in browser");
+await tab.waitForSelector('[aria-label="Stop tunnel to web"]', { timeout: 20000 }).catch(() => {});
+check("a tunnel opened from a row shows in the bar and the row", (await openButtons()) === before - 1);
+// The tunnel opened in a new tab; come back to this one.
+await tab.bringToFront();
+await tab.evaluate(() => document.querySelector('[aria-label="Stop tunnel to web"]')?.click());
+await tab.waitForFunction(n => [...document.querySelectorAll("button")].filter(b => b.textContent.trim() === "Open in browser").length === n, { timeout: 10000 }, before).catch(() => {});
+check("closing it from the bar resets the row", (await openButtons()) === before);
+check("without an error", !/no such tunnel/i.test(await text()));
 check("no page errors", errors.length === 0, errors.slice(0, 2).join(" ~ "));
 if (!results.every(Boolean)) await tab.screenshot({ path: "ops-failure.png" });
 await browser.close();

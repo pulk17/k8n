@@ -327,8 +327,9 @@ func StartForwardHandler(getClient ClientGetter) gin.HandlerFunc {
 
 func StopForwardHandler() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Closing a tunnel that is already gone is what the caller wanted anyway.
 		if !stopForward(c.Param("id")) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "No such tunnel; it may have closed on its own"})
+			c.JSON(http.StatusOK, gin.H{"message": "Already closed"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "Stopped"})

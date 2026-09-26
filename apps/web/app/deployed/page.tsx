@@ -140,13 +140,15 @@ function groupStacks(list: K8sResource[]): StackGroup[] {
 /** One app: its name, where it came from, and a way to open it on the canvas. */
 function StackSection({ group, total, children }: { group: StackGroup; total: number; children: React.ReactNode }) {
   // Everything open when there is little to show; big clusters start folded.
-  const [open, setOpen] = useState(total < 40);
+  // Follows the size (it changes with the namespace) until toggled by hand.
+  const [chosen, setOpen] = useState<boolean | null>(null);
+  const open = chosen ?? total < 40;
   const workloads = group.items.filter(r => ["Deployment", "StatefulSet", "DaemonSet", "CronJob"].includes(r.kind));
   const ready = workloads.filter(r => ["Ready", "Running", "Active"].includes(r.status)).length;
   return (
     <section className="rounded-xl border border-gray-200 bg-gray-100/60 p-3 dark:border-neutral-800 dark:bg-neutral-900/40">
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={() => setOpen(o => !o)} className="flex min-w-0 items-center gap-2 text-left" aria-expanded={open}>
+        <button onClick={() => setOpen(!open)} className="flex min-w-0 items-center gap-2 text-left" aria-expanded={open}>
           {open ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
           <Layers className="h-5 w-5 text-blue-500" />
           <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">{group.name || "Not in a stack"}</span>

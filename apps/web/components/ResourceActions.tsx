@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Copy, ExternalLink, Eye, Loader2, Play, RotateCcw, RefreshCw, Scale, Shield, Terminal, X } from "lucide-react";
 import {
   Forward,
@@ -8,6 +8,7 @@ import {
   Permission,
   errorMessage,
   execInPod,
+  fetchForwards,
   fetchPermissions,
   revealSecret,
   startForward,
@@ -17,8 +18,26 @@ import {
 import { confirmAction, notify, notifyError } from "../lib/dialog";
 import { age, localTime } from "../lib/constants";
 
-/** Tells the tunnels bar to refresh after one is opened or closed. */
+/** Tells every tunnel view to refresh after one is opened or closed. */
 export const TUNNELS_CHANGED = "k8n:tunnels";
+export const tunnelsChanged = () => window.dispatchEvent(new Event(TUNNELS_CHANGED));
+
+/** The engine's open tunnels: the one list both the tunnels bar and each resource read. */
+export function useForwards() {
+  const [forwards, setForwards] = useState<Forward[]>([]);
+  useEffect(() => {
+    const refresh = () => fetchForwards().then(setForwards).catch(() => setForwards([]));
+    refresh();
+    window.addEventListener(TUNNELS_CHANGED, refresh);
+    // A tunnel closes on its own when its pod goes away.
+    const t = setInterval(refresh, 10000);
+    return () => {
+      window.removeEventListener(TUNNELS_CHANGED, refresh);
+      clearInterval(t);
+    };
+  }, []);
+  return forwards;
+}
 
 const button =
   "inline-flex items-center gap-1.5 rounded border border-gray-300 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-neutral-700 dark:text-gray-300 dark:hover:bg-neutral-800";
@@ -133,7 +152,7 @@ export function OpenInBrowser({
   dark?: boolean;
 }) {
   const [port, setPort] = useState(ports[0] ?? 0);
-  const [tunnel, setTunnel] = useState<Forward | null>(null);
+  const tunnel = useForwards().find(f => f.kind === kind && f.namespace === namespace && f.name === name);
   const [busy, setBusy] = useState(false);
   const btn = dark
     ? "inline-flex items-center gap-1.5 rounded border border-neutral-700 px-2.5 py-1.5 text-xs text-gray-300 hover:border-neutral-600 hover:text-gray-100 disabled:opacity-50"
@@ -147,7 +166,7 @@ export function OpenInBrowser({
       notifyError(errorMessage(err));
     } finally {
       setBusy(false);
-      window.dispatchEvent(new Event(TUNNELS_CHANGED));
+      tunnelsChanged();
     }
   };
 
@@ -167,10 +186,7 @@ export function OpenInBrowser({
           <a href={tunnel.url} target="_blank" rel="noreferrer" className="font-mono text-xs text-blue-500 hover:underline">
             {tunnel.url}
           </a>
-          <button className={btn} disabled={busy} onClick={() => act(async () => {
-            await stopForward(tunnel.id);
-            setTunnel(null);
-          })}>
+          <button className={btn} disabled={busy} onClick={() => act(() => stopForward(tunnel.id).then(() => {}))}>
             <X className="h-3.5 w-3.5" /> Stop
           </button>
         </>
@@ -183,7 +199,6 @@ export function OpenInBrowser({
             onClick={() =>
               act(async () => {
                 const f = await startForward(kind, namespace, name, port || undefined);
-                setTunnel(f);
                 window.open(f.url, "_blank", "noopener");
               })
             }
